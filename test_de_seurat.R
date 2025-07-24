@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
   library(BPCells)
 })  
 
-work_dir = "projects/sc-benchmarking"
+work_dir = "sc-benchmarking"
 data_dir = "single-cell/SEAAD"
 source(file.path(work_dir, "utils_local.R"))
 
@@ -13,21 +13,19 @@ args = commandArgs(trailingOnly=TRUE)
 size <- args[1]
 output <- args[2]
 
-scratch_dir <- Sys.getenv("SCRATCH")
+system_info()
+timers = TimerMemoryCollection(silent = TRUE)
+
+scratch_dir <- "projects/def-wainberg/single-cell/BPCells-Scratch"
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "de")
 if (!dir.exists(bpcells_dir_test)) {
     dir.create(bpcells_dir_test, recursive = TRUE)
 }
 
-system_info()
-timers = TimerMemoryCollection(silent = TRUE)
-
-# Not timed
 if (file.exists(file.path(bpcells_dir_test, size))) {
   unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
 }
 
-# Load data ####
 timers$with_timer("Load data", {
     mat_disk <- open_matrix_anndata_hdf5(
       path = file.path(data_dir, paste0("SEAAD_raw_", size,".h5ad")))
@@ -44,20 +42,13 @@ timers$with_timer("Load data", {
     data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
   })
 
-
-# Quality control ####
 timers$with_timer("Quality control", {
   data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
   data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
 })
 
-# TODO: Add doublet detection
-# Subset the BPCells matrix to each sample and loop through each sample
-
-# Not timed
 data$ad_dx <- ifelse(data$ad_dx == "1", "AD", "Control")
 
-# Data transformation (pseudobulk / normalization) ####
 timers$with_timer("Data transformation (pseudobulk / normalization)", {
   data <- AggregateExpression(
     data, 
@@ -67,7 +58,6 @@ timers$with_timer("Data transformation (pseudobulk / normalization)", {
   )
 })
 
-# Differential expression ####
 timers$with_timer("Differential expression", {
   data$group <- paste(data$subclass, data$ad_dx, sep = "_")
   Idents(data) <- "group"
@@ -86,8 +76,8 @@ timers$with_timer("Differential expression", {
 
 timers$print_summary(sort = FALSE)
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library <- 'seurat'
-timers_df$test <- 'de'
+timers_df$library <- "seurat"
+timers_df$test <- "de"
 timers_df$size <- size
 
 write.csv(timers_df, output, row.names = FALSE)

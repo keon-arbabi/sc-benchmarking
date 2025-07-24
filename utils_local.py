@@ -15,7 +15,6 @@ delay = 0.10
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _MONITOR_MEM_SH_PATH = os.path.join(_SCRIPT_DIR, "monitor_mem.sh")
 
-
 class TimerMemoryCollection:
     def __init__(self, silent=True):
         self.timings = {}
@@ -241,7 +240,6 @@ class TimerMemoryCollection:
                 "percent_mem": percent_mem,
             }
         )
-
 
 def system_info():
     hostname = socket.gethostname()

@@ -77,26 +77,7 @@ sc = sc\
         num_counts_column='nCount_RNA',
         num_genes_column='nFeature_RNA', 
         mito_fraction_column='percent.mt',
-        allow_float=True)\
-    .qc(subset=False,
-        QC_column='tmp_passed_QC',
-        remove_doublets=True,
-        batch_column='sample',
-        allow_float=True)\
-    .with_uns(QCed=False)
-
-'''
-Starting with 1,214,581 cells.
-Filtering to cells with ≤5.0% mitochondrial counts...
-1,174,861 cells remain after filtering to cells with ≤5.0% mitochondrial counts.
-Filtering to cells with ≥100 genes detected (with non-zero count)...
-1,174,861 cells remain after filtering to cells with ≥100 genes detected.
-Filtering to cells with non-zero MALAT1 expression...
-1,174,759 cells remain after filtering to cells with non-zero MALAT1 expression.
-Removing predicted doublets...
-894,168 cells remain after removing predicted doublets.
-Adding a Boolean column, obs['tmp_passed_QC'], indicating which cells passed QC...
-'''
+        allow_float=True)
 
 path = 'single-cell/SEAAD'
 sizes = {1200000: '1.2M', 400000: '400K', 20000: '20K'}
@@ -159,18 +140,8 @@ Filtering to cells with non-zero MALAT1 expression...
 137,223 cells remain after filtering to cells with non-zero MALAT1 expression.
 '''
 
-path = 'single-cell/SEAAD'
-sizes = {600000: '600K', 200000: '200K', 10000: '10K'}
-
-for n, label in sizes.items():
-    print(f'Subsampling to {label}')
-    sc_sub = sc.subsample_obs(n=n, by_column='subclass', QC_column=None)
-    print(f'Saving {label} h5ad')
-    sc_sub.save(f'{path}/SEAAD_ref_{label}.h5ad', overwrite=True)
-    if label != '600K':
-        print(f'Saving {label} rds')
-        sc_sub.save(f'{path}/SEAAD_ref_{label}.rds', overwrite=True)
-    del sc_sub; gc.collect()
+sc.save(f'{path}/SEAAD_ref.h5ad', overwrite=True)
+sc.save(f'{path}/SEAAD_ref.rds', overwrite=True)
 
 del sc; gc.collect()
 
