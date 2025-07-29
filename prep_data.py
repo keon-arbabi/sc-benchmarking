@@ -118,7 +118,7 @@ column       value
 '''
 
 sc.save(f'{dir_data}/SEAAD_raw.h5ad', overwrite=True)
-sc.subsample_obs(n=50000, by_column='subclass', QC_column=None)\
+sc.subsample_obs(n=50000, by_column='cell_type', QC_column=None)\
     .save(f'{dir_data}/SEAAD_raw_50K.h5ad', overwrite=True)
 
 del sc; gc.collect()
@@ -194,7 +194,7 @@ if not os.path.exists(file_ref_data):
     run(f'wget https://datasets.cellxgene.cziscience.com/'
         f'428b51a9-6ea7-4c5b-a80a-e0ae77f2a4da.h5ad -O {file_ref_data}')
 
-cols = ['sample',  'cell_type', 'treatment']
+cols = ['sample', 'cell_type', 'treatment']
 
 sc = SingleCell(file_data)\
     .rename_obs({'_index': 'cell_id'})\
@@ -234,7 +234,7 @@ column       value
 '''
 
 sc.save(f'{dir_data}/Parse_PBMC_raw.h5ad', overwrite=True)
-sc.subsample_obs(n=50000, by_column='subclass', QC_column=None)\
+sc.subsample_obs(n=50000, by_column='cell_type', QC_column=None)\
     .save(f'{dir_data}/Parse_PBMC_raw_50K.h5ad', overwrite=True)
 
 
