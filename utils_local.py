@@ -1,21 +1,23 @@
 import gc
 import io
 import os
+import time
 import socket
 import subprocess
-import time
 import numpy as np
 import polars as pl
-import psutil
-from contextlib import contextmanager
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 from timeit import default_timer
+from contextlib import contextmanager
 
-delay = 0.10
+delay = 0.50
 
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_MONITOR_MEM_SH_PATH = os.path.join(_SCRIPT_DIR, "monitor_mem.sh")
+_MONITOR_MEM_SH_PATH = os.path.join(
+    os.path.dirname(__file__), 'monitor_mem.sh')
 
-class TimerMemoryCollection:
+class MemoryTimer:
     def __init__(self, silent=True):
         self.timings = {}
         self.silent = silent
@@ -27,9 +29,9 @@ class TimerMemoryCollection:
         @contextmanager
         def timer():
             if not self.silent:
-                print(f"{message}...")
+                print(f'{message}...')
             curr_process = subprocess.Popen(
-                [_MONITOR_MEM_SH_PATH, "-p", str(pid)],
+                [_MONITOR_MEM_SH_PATH, '-p', str(pid)],
                 shell=False,
                 stdout=subprocess.PIPE,
                 text=True,
@@ -46,14 +48,14 @@ class TimerMemoryCollection:
                 duration = default_timer() - start
 
                 if not self.silent:
-                    status = "aborted after" if aborted else "took"
+                    status = 'aborted after' if aborted else 'took'
                     time_str = self._format_time(duration)
-                    print(f"{message} {status} {time_str}\n")
-                subprocess.run(["kill", str(curr_process.pid)])
+                    print(f'{message} {status} {time_str}\n')
+                subprocess.run(['kill', str(curr_process.pid)])
                 stdout_output = curr_process.communicate()[0]
 
                 mat = np.loadtxt(
-                    io.StringIO(stdout_output), delimiter=","
+                    io.StringIO(stdout_output), delimiter=','
                 ).astype(float)
                 if mat.ndim == 1:
                     mat = mat[None, None]
@@ -65,80 +67,80 @@ class TimerMemoryCollection:
                 new_percent_mem = np.round(max_mat[1], 1)
 
                 if message in self.timings:
-                    self.timings[message]["duration"] += duration
-                    self.timings[message]["memory"] = max(
-                        self.timings[message]["memory"], new_memory
+                    self.timings[message]['duration'] += duration
+                    self.timings[message]['memory'] = max(
+                        self.timings[message]['memory'], new_memory
                     )
-                    self.timings[message]["%mem"] = max(
-                        self.timings[message]["%mem"], new_percent_mem
+                    self.timings[message]['%mem'] = max(
+                        self.timings[message]['%mem'], new_percent_mem
                     )
-                    self.timings[message]["aborted"] = (
-                        self.timings[message]["aborted"] or aborted
+                    self.timings[message]['aborted'] = (
+                        self.timings[message]['aborted'] or aborted
                     )
                 else:
                     self.timings[message] = {
-                        "duration": duration,
-                        "memory": new_memory,
-                        "%mem": new_percent_mem,
-                        "aborted": aborted,
+                        'duration': duration,
+                        'memory': new_memory,
+                        '%mem': new_percent_mem,
+                        'aborted': aborted,
                     }
                 gc.collect()
 
         return timer()
 
     def print_summary(self, sort=True, unit=None):
-        print("\n--- Timing Summary ---")
+        print('\n--- Timing Summary ---')
         if sort:
             timings_items = sorted(
                 self.timings.items(),
-                key=lambda x: x[1]["duration"],
+                key=lambda x: x[1]['duration'],
                 reverse=True
             )
         else:
             timings_items = list(self.timings.items())
-        total_time = sum(info["duration"] for _, info in timings_items)
+        total_time = sum(info['duration'] for _, info in timings_items)
 
         for message, info in timings_items:
-            duration = info["duration"]
-            memory = info["memory"]
+            duration = info['duration']
+            memory = info['memory']
             percentage = (duration / total_time) * 100 if total_time > 0 else 0
-            status = "aborted after" if info["aborted"] else "took"
+            status = 'aborted after' if info['aborted'] else 'took'
             time_str = self._format_time(duration, unit)
             print(
                 f'{message} {status} {time_str} ({percentage:.1f}%) '
-                f'using {memory} GiB ({info["%mem"]}%)'
+                f'using {memory} GiB ({info['%mem']}%)'
             )
-        print(f"\nTotal time: {self._format_time(total_time, unit)}")
+        print(f'\nTotal time: {self._format_time(total_time, unit)}')
 
     def _format_time(self, duration, unit=None):
         if unit is not None:
             converted = duration
-            if unit == "s":
+            if unit == 's':
                 pass
-            elif unit == "ms":
+            elif unit == 'ms':
                 converted = duration * 1000
-            elif unit == "us" or unit == "µs":
+            elif unit == 'us' or unit == 'µs':
                 converted = duration * 1000000
-            elif unit == "ns":
+            elif unit == 'ns':
                 converted = duration * 1000000000
-            elif unit == "m":
+            elif unit == 'm':
                 converted = duration / 60
-            elif unit == "h":
+            elif unit == 'h':
                 converted = duration / 3600
-            elif unit == "d":
+            elif unit == 'd':
                 converted = duration / 86400
             else:
-                raise ValueError(f"Unsupported unit: {unit}")
-            return f"{converted}{unit}"
+                raise ValueError(f'Unsupported unit: {unit}')
+            return f'{converted}{unit}'
 
         units = [
-            (86400, "d"),
-            (3600, "h"),
-            (60, "m"),
-            (1, "s"),
-            (0.001, "ms"),
-            (0.000001, "µs"),
-            (0.000000001, "ns"),
+            (86400, 'd'),
+            (3600, 'h'),
+            (60, 'm'),
+            (1, 's'),
+            (0.001, 'ms'),
+            (0.000001, 'µs'),
+            (0.000000001, 'ns'),
         ]
         parts = []
         for threshold, suffix in units:
@@ -151,108 +153,140 @@ class TimerMemoryCollection:
                 else:
                     value = int((duration / threshold) % 1000)
                 if value > 0 or (not parts and threshold == 0.000000001):
-                    parts.append(f"{value}{suffix}")
+                    parts.append(f'{value}{suffix}')
                 if len(parts) == 2:
                     break
-        return " ".join(parts) if parts else "less than 1ns"
+        return ' '.join(parts) if parts else 'less than 1ns'
 
     def to_dataframe(self, sort=True, unit=None):
         if not self.timings:
             return pl.DataFrame(
                 {
-                    "operation": [],
-                    "duration": [],
-                    "duration_unit": [],
-                    "aborted": [],
-                    "percentage": [],
-                    "memory": [],
-                    "%mem": [],
+                    'operation': [],
+                    'duration': [],
+                    'duration_unit': [],
+                    'aborted': [],
+                    'percentage': [],
+                    'memory': [],
+                    '%mem': [],
                 }
             )
 
         ops, durs, aborts, pcts = [], [], [], []
         memory, percent_mem = [], []
         memory_unit = []
-        total = sum(info["duration"] for info in self.timings.values())
+        total = sum(info['duration'] for info in self.timings.values())
 
         items = (
             sorted(
                 self.timings.items(),
-                key=lambda x: x[1]["duration"],
+                key=lambda x: x[1]['duration'],
                 reverse=True
             )
             if sort
             else list(self.timings.items())
         )
 
-        duration_unit = "s"
+        duration_unit = 's'
         if unit is not None:
             duration_unit = unit
             conversion = 1.0
-            if unit == "s":
+            if unit == 's':
                 pass
-            elif unit == "ms":
+            elif unit == 'ms':
                 conversion = 1000
-            elif unit == "us" or unit == "µs":
+            elif unit == 'us' or unit == 'µs':
                 conversion = 1000000
-            elif unit == "ns":
+            elif unit == 'ns':
                 conversion = 1000000000
-            elif unit == "m":
+            elif unit == 'm':
                 conversion = 1 / 60
-            elif unit == "h":
+            elif unit == 'h':
                 conversion = 1 / 3600
-            elif unit == "d":
+            elif unit == 'd':
                 conversion = 1 / 86400
             else:
-                raise ValueError(f"Unsupported unit: {unit}")
+                raise ValueError(f'Unsupported unit: {unit}')
 
             for msg, info in items:
                 ops.append(msg)
-                durs.append(info["duration"] * conversion)
-                aborts.append(info["aborted"])
+                durs.append(info['duration'] * conversion)
+                aborts.append(info['aborted'])
                 pcts.append(
-                    (info["duration"] / total) * 100 if total > 0 else 0
+                    (info['duration'] / total) * 100 if total > 0 else 0
                 )
-                memory.append((info["memory"]))
-                memory_unit.append("GiB")
-                percent_mem.append((info["%mem"]))
+                memory.append((info['memory']))
+                memory_unit.append('GiB')
+                percent_mem.append((info['%mem']))
         else:
             for msg, info in items:
                 ops.append(msg)
-                durs.append(info["duration"])
-                aborts.append(info["aborted"])
+                durs.append(info['duration'])
+                aborts.append(info['aborted'])
                 pcts.append(
-                    (info["duration"] / total) * 100 if total > 0 else 0
+                    (info['duration'] / total) * 100 if total > 0 else 0
                 )
-                memory.append((info["memory"]))
-                memory_unit.append("GiB")
-                percent_mem.append((info["%mem"]))
+                memory.append((info['memory']))
+                memory_unit.append('GiB')
+                percent_mem.append((info['%mem']))
 
         return pl.DataFrame(
             {
-                "operation": ops,
-                "duration": durs,
-                "duration_unit": [duration_unit] * len(ops),
-                "aborted": aborts,
-                "percentage": pcts,
-                "memory": memory,
-                "memory_unit": memory_unit,
-                "percent_mem": percent_mem,
+                'operation': ops,
+                'duration': durs,
+                'duration_unit': [duration_unit] * len(ops),
+                'aborted': aborts,
+                'percentage': pcts,
+                'memory': memory,
+                'memory_unit': memory_unit,
+                'percent_mem': percent_mem,
             }
         )
 
 def system_info():
     hostname = socket.gethostname()
-    cpu_count_physical = psutil.cpu_count(logical=False)
-    cpu_count_logical = psutil.cpu_count(logical=True)
+    user = os.environ.get('USER', 'N/A')
+    mem_gb = 'N/A'
+    cpu_cores = os.environ.get('SLURM_CPUS_PER_TASK') or \
+                os.environ.get('SLURM_CPUS_ON_NODE')
+    try:
+        mem_mb = int(os.environ['SLURM_MEM_PER_NODE'])
+        mem_gb = f'{mem_mb / 1024:.1f} GB'
+    except (KeyError, ValueError):
+        pass
+            
+    print(f'\n--- User Resource Allocation ---')
+    print(f'Node: {hostname}')
+    print(f'User: {user}')
+    print(f'CPU Cores Allocated: {cpu_cores}')
+    print(f'Memory Allocated: {mem_gb}')
 
-    mem = psutil.virtual_memory()
-    total_mem_gb = mem.total / (1024**3)
-    available_mem_gb = mem.available / (1024**3)
-
-    print("\n--- System Information ---")
-    print(f"Node: {hostname}")
-    print(f"CPU: {cpu_count_physical} physical cores, "
-          f"{cpu_count_logical} logical cores")
-    print(f"Memory: {available_mem_gb:.1f} GB available / "
-          f"{total_mem_gb:.1f} GB total")
+def confusion_matrix_plot(sc_obs, orig_col, trans_col):
+    cm = pd.crosstab(
+        sc_obs[orig_col].to_pandas(),
+        sc_obs[trans_col].to_pandas()
+    )
+    cm.to_csv('cell_type_confusion.csv')
+    norm_cm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
+    height = 6 + norm_cm.shape[0] * 0.05
+    width = 8 + norm_cm.shape[1] * 0.05
+    plt.figure(figsize=(width, height))
+    ax = sns.heatmap(
+        norm_cm,
+        square=False,
+        linewidths=0.5,
+        cmap='rocket_r',
+        vmin=0,
+        vmax=1,
+        cbar_kws={'shrink': 0.7}
+    )
+    cbar = ax.collections[0].colorbar
+    cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1])
+    cbar.set_ticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
+    plt.xticks(rotation=90)
+    plt.yticks(rotation=0)
+    ax.set_xlabel(f'Predicted: {trans_col}')
+    ax.set_ylabel(f'Original: {orig_col}')
+    plt.tight_layout()
+    plt.savefig('cell_type_confusion.png', dpi=300)
+    plt.show()

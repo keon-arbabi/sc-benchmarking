@@ -3,23 +3,21 @@ import sys
 import polars as pl  
 from single_cell import SingleCell  
 sys.path.append('sc-benchmarking')
-from utils_local import TimerMemoryCollection, system_info
+from utils_local import MemoryTimer, system_info
 
-num_threads = int(sys.argv[1])
-subset = sys.argv[2].lower() == 'true'
-size = sys.argv[3]
-output = sys.argv[4]
+DATASET_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+NUM_THREADS = int(sys.argv[3])
+OUTPUT_PATH = sys.argv[4]
 
 print('--- Params ---')
-print(f'{size=}, {num_threads=}, {subset=}')
+print(f'{NUM_THREADS=}')
 
 system_info()
-timers = TimerMemoryCollection(silent=True)
+timers = MemoryTimer(silent=True)
 
 with timers('Load data'):
-    data = SingleCell(
-        f'single-cell/SEAAD/SEAAD_raw_{size}.h5ad', 
-        num_threads=num_threads)
+    data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
 with timers('Quality control'):
     data = data.qc(
@@ -30,11 +28,9 @@ with timers('Quality control'):
 
 with timers('Doublet detection'):
     data = data.find_doublets(batch_column='sample')
-        
+
 with timers('Quality control'):
-    if subset:
-        data = data.filter_obs(
-            pl.col('doublet').not_() & pl.col('passed_QC'))
+    data = data.filter_obs(pl.col('doublet').not_())
 
 with timers('Feature selection'):
     data = data.hvg()
@@ -56,24 +52,22 @@ with timers('Embedding'):
 
 with timers('Plot embedding'):
     data.plot_embedding(    
-        'subclass', 
-        f'sc-benchmarking/figures/sc_embedding_subclass_{size}.png')
+        'cell_type', 
+        f'sc-benchmarking/figures/brisc_embedding_{DATASET_NAME}.png')
 
 with timers('Find markers'):
-    markers = data.find_markers('subclass')
+    markers = data.find_markers('cell_type')
 
 timers.print_summary(sort=False)
 
-df = timers.to_dataframe(sort=False, unit='s')\
+timers_df = timers.to_dataframe(sort=False, unit='s')\
     .with_columns(
         pl.lit('brisc').alias('library'),
         pl.lit('basic').alias('test'),
-        pl.lit(size).alias('size'),
-        pl.lit(subset).alias('subset'),
-        pl.lit('single-threaded' if num_threads == 1 else 'multi-threaded')
+        pl.lit(DATASET_NAME).alias('dataset'),
+        pl.lit('single-threaded' if NUM_THREADS == 1 else 'multi-threaded')
         .alias('num_threads'))
-df.write_csv(output)
+timers_df.write_csv(OUTPUT_PATH)
 
-del data, timers, df
-gc.collect()
-
+if not all(timers_df['aborted']):
+    print('--- Completed successfully ---')

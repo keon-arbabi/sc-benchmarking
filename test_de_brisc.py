@@ -2,72 +2,93 @@ import gc
 import sys
 import polars as pl  
 from single_cell import SingleCell  
+sys.path.append('sc-benchmarking')
+from utils_local import MemoryTimer, system_info
 
-work_dir = 'projects/sc-benchmarking'
-data_dir = 'single-cell/SEAAD'
+DATASET_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+NUM_THREADS = int(sys.argv[3])
+OUTPUT_PATH = sys.argv[4]
 
-sys.path.append(work_dir)
-from utils_local import TimerMemoryCollection, system_info
+DATASET_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_SEAAD_-1.csv'
 
-num_threads = int(sys.argv[1])
-size = sys.argv[2]
-output = sys.argv[3]
+DATASET_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
 
 print('--- Params ---')
-print(f'{size=}, {num_threads=}')
+print(f'{NUM_THREADS=}')
 
 system_info()
-timers = TimerMemoryCollection(silent=True)
+timers = MemoryTimer(silent=True)
 
-# TODO: Temporarily setting `num_threads=1` for loading until shared 
-# memory benchmarking is possible 
-
-#%% Load data
 with timers('Load data'):
-    data = SingleCell(f'{data_dir}/SEAAD_raw_{size}.h5ad', num_threads=1)
-    data = data.set_num_threads(num_threads)
+    data_sc = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
-#%% Quality control
 with timers('Quality control'):
-    data = data.qc(
+    data_sc = data_sc.qc(
+        subset=False,
         remove_doublets=False,
         allow_float=True,
         verbose=False)
 
-#%% Doublet detection
 with timers('Doublet detection'):
-    data = data.find_doublets(batch_column='sample')
+    data_sc = data_sc.find_doublets(batch_column='sample')
 
-#%% Data transformation (pseudobulk / normalization)
 with timers('Data transformation (pseudobulk / normalization)'):
-    data = data.pseudobulk('sample', 'subclass')
-    data = data.qc('ad_dx', verbose=False)
+    data_pb = data_sc.pseudobulk('sample', 'cell_type')
 
-# Not timed, temporary fix for `pmi` column until `prep_data.py` is run again
-data = data.with_columns_obs(pl.col('pmi').cast(pl.Float64))
+del data_sc; gc.collect()
 
-if size == '20K':
-    excluded_cell_types = ['L6 IT Car3', 'Sncg']
+with timers('Data transformation (pseudobulk / normalization)'):
+    if DATASET_NAME == 'SEAAD':
+        data_pb = data_pb.qc('ad_dx', verbose=False)
 
-#%% Differential expression
+    elif DATASET_NAME == 'PBMC':
+        data_pb = data_pb.qc('treatment', verbose=False)
+
 with timers('Differential expression'):
-    de = data\
-        .library_size()\
-        .DE(
-        '~ ad_dx + apoe4_dosage + sex + age_at_death + '
-        'log2(num_cells) + log2(library_size)',
-        group='ad_dx',
-        excluded_cell_types=excluded_cell_types)
+    if DATASET_NAME == 'SEAAD':
+        formula = '~ ad_dx + apoe4_dosage + sex + age_at_death + ' \
+            'log2(num_cells) + log2(library_size)'
+        de = data_pb\
+            .library_size()\
+            .DE(formula,
+                group='ad_dx',
+                verbose=False)
+                
+    elif DATASET_NAME == 'PBMC':
+        formula = '~ 0 + cytokine + donor + ' \
+            'log2(num_cells) + log2(library_size)'
+        contrasts = {
+            cell_type: {
+                f'{c}_vs_PBS': f'cytokine{c} - cytokinePBS'
+                for c in obs['cytokine'].unique() if c != 'PBS'
+            }
+            for cell_type, (_, obs, _) in data_pb.items()
+        }
+        de_results = data_pb\
+            .library_size()\
+            .DE(formula,
+                contrasts=contrasts,
+                group='cytokine',
+                verbose=False)
+
+
     
 timers.print_summary(sort=False)
 
 df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('brisc').alias('library'),
     pl.lit('de').alias('test'),
-    pl.lit(size).alias('size'),
-    pl.lit(num_threads).alias('num_threads'),
+    pl.lit(DATASET_NAME).alias('dataset'),
+    pl.lit(NUM_THREADS).alias('num_threads'),
 )
-df.write_csv(output)
+df.write_csv(OUTPUT_PATH)
 
 del data, de, timers, df
 gc.collect()

@@ -4,16 +4,21 @@ import polars as pl
 import scanpy as sc  
 import matplotlib.pyplot as plt  
 sys.path.append('sc-benchmarking')
-from utils_local import TimerMemoryCollection, system_info
+from utils_local import MemoryTimer, system_info
 
-size = sys.argv[1]
-output = sys.argv[2]
+DATASET_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH = sys.argv[3]
+
+DATASET_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
+OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
 
 system_info()
-timers = TimerMemoryCollection(silent=True)
+timers = MemoryTimer(silent=True)
 
 with timers('Load data'):
-    data = sc.read_h5ad(f'single-cell/SEAAD/SEAAD_raw_{size}.h5ad')
+    data = sc.read_h5ad(DATA_PATH)
 
 with timers('Quality control'):
     data.var['mt'] = data.var_names.str.startswith('MT-')
@@ -52,26 +57,24 @@ with timers('Clustering (3 res.)'):
             resolution=res)
 
 with timers('Plot embedding'):
-    sc.pl.umap(data, color=['subclass'])
+    sc.pl.umap(data, color=['cell_type'])
     plt.savefig(
-        f'sc-benchmarking/figures/scanpy_embedding_subclass_{size}.png',
+        f'sc-benchmarking/figures/scanpy_embedding.png',
         dpi=300,
         bbox_inches='tight',
-        pad_inches='layout',
-    )
+        pad_inches='layout')
 
 with timers('Find markers'):
-    sc.tl.rank_genes_groups(data, groupby='subclass', method='wilcoxon')
+    sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
 
 timers.print_summary(sort=False)
 
 timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('scanpy').alias('library'),
     pl.lit('basic').alias('test'),
-    pl.lit(size).alias('size'),
-)
-timers_df.write_csv(output)
+    pl.lit(DATASET_NAME).alias('dataset'),)
+timers_df.write_csv(OUTPUT_PATH)
 
-del timers, timers_df, data
-gc.collect()
+if not all(timers_df['aborted']):
+    print('--- Completed successfully ---')
 

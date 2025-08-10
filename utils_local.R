@@ -14,7 +14,7 @@ if (is.null(.this_file_path)) .this_file_path <- "."
   mustWork = FALSE
 )
 
-TimerMemoryCollection = function(silent = TRUE) {
+MemoryTimer = function(silent = TRUE) {
   env = environment()
   env$timings = list()
   env$delay = 0.10
@@ -251,19 +251,23 @@ TimerMemoryCollection = function(silent = TRUE) {
   ), class = "TimerCollection")
 }
 
-system_info = function() {
-  cp = parallel::detectCores(logical = FALSE)
-  cl = parallel::detectCores(logical = TRUE)
-  
-  mem_info = system('free -g', intern = TRUE)
-  mem_line = strsplit(mem_info[2], "\\s+")[[1]]
-  tm = as.numeric(mem_line[2])
-  am = as.numeric(mem_line[4])
-  
-  cat('\n--- System Information ---\n')
-  cat(sprintf('Node: %s\n', Sys.info()['nodename']))
-  cat(sprintf('CPU: %s physical cores, %s logical cores\n', cp, cl))
-  cat(sprintf('Memory: %.1f GB available / %.1f GB total\n', am, tm))
+system_info <- function() {
+  hostname <- Sys.info()['nodename']
+  user <- Sys.getenv("USER")
+  cpu_task <- Sys.getenv("SLURM_CPUS_PER_TASK")
+  cpu_cores <- ifelse(nchar(cpu_task) > 0, cpu_task,
+                      Sys.getenv("SLURM_CPUS_ON_NODE"))
+  mem_gb_str <- "N/A"
+  mem_mb_str <- Sys.getenv("SLURM_MEM_PER_NODE")
+  if (nchar(mem_mb_str) > 0) {
+    mem_gb <- suppressWarnings(as.numeric(mem_mb_str)) / 1024
+    if (!is.na(mem_gb)) mem_gb_str <- sprintf("%.1f GB", mem_gb)
+  }
+  cat('\n--- User Resource Allocation ---\n')
+  cat(sprintf('Node: %s\n', hostname))
+  cat(sprintf('User: %s\n', user))
+  cat(sprintf('CPU Cores Allocated: %s\n', cpu_cores))
+  cat(sprintf('Memory Allocated: %s\n', mem_gb_str))
 }
 
 read_h5ad_obs <- function(path) {

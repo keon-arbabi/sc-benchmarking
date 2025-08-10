@@ -6,12 +6,13 @@ MONITOR_PID_FILE="/tmp/memory_monitor_script.pid"
 
 # Helper Functions
 usage() {
-    echo "Usage: $0 -p <PID_to_monitor> [-i <interval_seconds>]"
+    echo "Usage: $0 [-p] <PID_to_monitor> [-i <interval_seconds>]"
     echo ""
     echo "Examples:"
-    echo "  $0 -p 12345 -i 10  (Monitor PID 12345 every 10s)"
+    echo "  $0 12345"
+    echo "  $0 -p 12345 -i 10"
     echo ""
-    echo "To run in the background: $0 -p <PID> &"
+    echo "To run in the background: $0 <PID> &"
     echo "To stop a backgrounded monitor: kill \$(cat ${MONITOR_PID_FILE})"
     exit 1
 }
@@ -25,6 +26,12 @@ cleanup() {
 TARGET_PID=""
 INTERVAL="$DEFAULT_INTERVAL"
 
+# Handle positional PID for backward compatibility
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+    TARGET_PID="$1"
+    shift
+fi
+
 while getopts ":p:i:h" opt; do
     case ${opt} in
         p ) TARGET_PID=$OPTARG ;;
@@ -36,14 +43,14 @@ while getopts ":p:i:h" opt; do
 done
 
 if [ -z "$TARGET_PID" ]; then
-    echo "Error: You must specify a PID (-p)."
+    echo "Error: You must specify a PID."
     usage
 fi
 
 # Main Logic
 
 # Check if target PID exists initially
-if ! ps -p "$TARGET_PID" > /dev/null; then
+if [ ! -d "/proc/$TARGET_PID" ]; then
     echo "Error: Process with PID $TARGET_PID not found."
     exit 1
 fi
@@ -53,8 +60,8 @@ echo $$ > "$MONITOR_PID_FILE"
 trap cleanup SIGINT SIGTERM
 
 while true; do
-    # Check if the target process still exists
-    if ! ps -p "$TARGET_PID" > /dev/null; then
+    # Check if the target process still exists by checking for its /proc entry
+    if [ ! -d "/proc/$TARGET_PID" ]; then
         cleanup
     fi
 

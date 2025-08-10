@@ -1,42 +1,43 @@
 suppressPackageStartupMessages({
-  library(tidyverse)
   library(BPCells)
   library(Seurat)
 })
 
-work_dir = "sc-benchmarking"
-data_dir = "single-cell/SEAAD"
+work_dir <- "sc-benchmarking"
 source(file.path(work_dir, "utils_local.R"))
 
-args = commandArgs(trailingOnly=TRUE)
-size <- args[1]
-output <- args[2]
+ARGS <- commandArgs(trailingOnly=TRUE)
+DATASET_NAME <- ARGS[1]
+DATA_PATH <- ARGS[2]
+OUTPUT_PATH <- ARGS[3]
+
+DATASET_NAME <- 'PBMC'
+DATA_PATH <- 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
+OUTPUT_PATH <- 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
 
 system_info()
-timers = TimerMemoryCollection(silent = TRUE)
+timers <- MemoryTimer(silent = TRUE)
 
-scratch_dir <- "projects/def-wainberg/single-cell/BPCells-Scratch"
+scratch_dir <- "single-cell/BPCells-Scratch"
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "basic")
 if (!dir.exists(bpcells_dir_test)) {
     dir.create(bpcells_dir_test, recursive = TRUE)
 }
-
-if (file.exists(file.path(bpcells_dir_test, size))) {
-  unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
+if (file.exists(bpcells_dir_test)) {
+  unlink(bpcells_dir_test, recursive = TRUE)
 }
 
 timers$with_timer("Load data", {
   mat_disk <- open_matrix_anndata_hdf5(
-    path = paste0(data_dir, "/SEAAD_raw_", size,".h5ad"))
+    path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-  file_path = file.path(bpcells_dir_test, size)
+  file_path <- file.path(bpcells_dir_test)
   write_matrix_dir(
     mat = mat_disk,
     dir = file_path
   )
   mat <- open_matrix_dir(dir = file_path)
-  # Custom utility to read obs metadata from h5ad file
-  obs_metadata <- read_h5ad_obs(paste0(data_dir, "/SEAAD_raw_", size,".h5ad"))
+  obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
@@ -62,37 +63,38 @@ timers$with_timer("PCA", {
 })
 
 timers$with_timer("Nearest neighbors", {
-  data = FindNeighbors(data, dims = 1:10)
+  data <- FindNeighbors(data, dims = 1:10)
 })
 
 timers$with_timer("Clustering (3 res.)", {
   for (resolution in c(0.5, 2, 1)) {
-    data = FindClusters(data, resolution = resolution)
+    data <- FindClusters(data, resolution = resolution)
   }
 })
 
 timers$with_timer("Embedding", {
-  data = RunUMAP(data, dims = 1:10)
+  data <- RunUMAP(data, dims = 1:10)
 })
 
 timers$with_timer("Plot embedding", {
-  DimPlot(data, reduction = "umap", group.by = "subclass")
-  ggsave(paste0(work_dir, "/figures/seurat_embedding_subclass_", size, ".png"),
+  DimPlot(data, reduction = "umap", group.by = "cell_type")
+  ggsave(paste0(work_dir, "/figures/seurat_embedding.png"),
         dpi = 300, units = "in", width = 10, height = 10)
 })
 
 timers$with_timer("Find markers", {
-  markers = FindAllMarkers(data, group.by = "subclass", only.pos = TRUE)
+  markers <- FindAllMarkers(data, group.by = "cell_type", only.pos = TRUE)
 })
 
 timers$print_summary(sort = FALSE)
-timers_df = timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library = 'seurat'
-timers_df$test = 'basic'
-timers_df$size = size
 
-write.csv(timers_df, output, row.names = FALSE)
+timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
+timers_df$library <- "seurat"
+timers_df$test <- "basic"
+timers_df$dataset <- DATASET_NAME
 
-unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
+write.csv(timers_df, OUTPUT_PATH, row.names = FALSE)
+
+unlink(bpcells_dir_test, recursive = TRUE)
 rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata)
 gc()
