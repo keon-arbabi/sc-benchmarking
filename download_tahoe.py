@@ -36,7 +36,7 @@ for i, cell in enumerate(tqdm(expression, desc='Processing cells')):
     genes = cell['genes']
     exp = cell['expressions']
     
-    if exp[0] < 0:
+    if len(exp) > 0 and exp[0] < 0:
         genes, exp = genes[1:], exp[1:]
 
     cols = [token_map[g] for g in genes if g in token_map]
@@ -56,10 +56,8 @@ obs_df = pd.DataFrame(obs_data)
 
 adata = anndata.AnnData(X=expr_matrix, obs=obs_df)
 adata.var.index = pd.Index(gene_names, name='ensembl_id')
-
 adata.obs = adata.obs.merge(
     sample_meta.drop(columns=['drug', 'plate']), on='sample', how='left')
 adata.obs = adata.obs.merge(drug_meta, on='drug', how='left')
-adata.obs = adata.obs.merge(cell_line_meta, on='cell_line', how='left')
 
 adata.write_h5ad(f'{cache_path}/Tahoe_50M.h5ad')

@@ -183,6 +183,9 @@ if not os.path.exists(file_ref_data):
 sc = SingleCell(file_data)\
     .rename_obs({'_index': 'cell_id'})\
     .select_obs('sample', 'donor', 'cytokine', 'cell_type', 'treatment')\
+    .with_columns_obs(
+        pl.col('cytokine').cast(pl.String)
+            .str.replace_all('-', '_').alias('cytokine'))\
     .rename_var({'_index': 'gene_symbol'})\
     .drop_var('n_cells')\
     .qc_metrics(
@@ -207,12 +210,12 @@ column        value
  cell_id       89_103_005__s1 
  sample        Donor10_4-1BBL 
  donor         Donor10        
- cytokine      4-1BBL         
+ cytokine      4_1BBL         
  cell_type     CD8 Naive      
  treatment     cytokine       
  nCount_RNA    4700           
  nFeature_RNA  2236           
- percent.mt    0.011914894     
+ percent.mt    0.011914894    
 
 column       value  
  gene_symbol  TSPAN6 

@@ -76,19 +76,18 @@ with timers('Differential expression'):
             .DE(formula,
                 contrasts=contrasts,
                 group='cytokine',
-                verbose=False)
+                categorical_columns=['donor', 'cytokine'],
+                verbose=True)
 
-
-    
 timers.print_summary(sort=False)
 
-df = timers.to_dataframe(sort=False, unit='s').with_columns(
+timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('brisc').alias('library'),
     pl.lit('de').alias('test'),
     pl.lit(DATASET_NAME).alias('dataset'),
     pl.lit(NUM_THREADS).alias('num_threads'),
 )
-df.write_csv(OUTPUT_PATH)
+timers_df.write_csv(OUTPUT_PATH)
 
-del data, de, timers, df
-gc.collect()
+if not all(timers_df['aborted']):
+    print('--- Completed successfully ---')

@@ -15,35 +15,28 @@ output = sys.argv[2]
 system_info()
 timers = TimerMemoryCollection(silent=True)
 
-#%% Load data
 with timers('Load data'):
     data = sc.read_h5ad(f'{data_dir}/SEAAD_raw_{size}.h5ad')
 
-#%% Quality control
 with timers('Quality control'):
     data.var['mt'] = data.var_names.str.startswith('MT-')
     sc.pp.calculate_qc_metrics(data, qc_vars=['mt'], inplace=True, log1p=True)
     sc.pp.filter_cells(data, min_genes=100)
     sc.pp.filter_genes(data, min_cells=3)
 
-#%% Doublet detection
 with timers('Doublet detection'):
     sc.pp.scrublet(data, batch_key='sample')
 
-#%% Quality control
 with timers('Quality control'):
     data = data[data.obs['predicted_doublet'] == False].copy()
 
-#%% Data transformation (pseudobulk / normalization)
 with timers('Data transformation (pseudobulk / normalization)'):
     sc.pp.normalize_total(data)
     sc.pp.log1p(data)
 
-# Not timed
 data.obs['ad_dx'] = data.obs['ad_dx']\
     .astype(str).map({'1': 'AD', '0': 'Control'})
 
-#%% Differential expression
 with timers('Differential expression'):
     data.obs['group'] = data.obs['subclass']\
         .astype(str) + '_' + data.obs['ad_dx'].astype(str)
@@ -72,6 +65,6 @@ timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
 )
 timers_df.write_csv(output)
 
-del data, de, adata_sub, timers, timers_df
-gc.collect()
+if not all(timers_df['aborted']):
+    print('--- Completed successfully ---')
 

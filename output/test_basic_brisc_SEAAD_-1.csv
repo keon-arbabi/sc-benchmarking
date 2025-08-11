@@ -1,0 +1,12 @@
+operation,duration,duration_unit,aborted,percentage,memory,memory_unit,percent_mem,library,test,dataset,num_threads
+Load data,43.60467320098542,s,false,3.1356532587116783,0.64,GiB,0.1,brisc,basic,SEAAD,multi-threaded
+Quality control,26.90778060501907,s,false,1.934963932648398,109.01,GiB,14.4,brisc,basic,SEAAD,multi-threaded
+Doublet detection,271.49459750097594,s,false,19.523433083711588,65.9,GiB,8.7,brisc,basic,SEAAD,multi-threaded
+Feature selection,14.371368697000435,s,false,1.0334587047398864,44.4,GiB,5.9,brisc,basic,SEAAD,multi-threaded
+Normalization,14.514002792013343,s,false,1.0437156573093762,55.1,GiB,7.3,brisc,basic,SEAAD,multi-threaded
+PCA,174.61125947497203,s,false,12.556460686146668,50.16,GiB,6.6,brisc,basic,SEAAD,multi-threaded
+Nearest neighbors,528.7690850950021,s,false,38.02428462522376,53.97,GiB,7.1,brisc,basic,SEAAD,multi-threaded
+Clustering (3 res.),30.062175816012314,s,false,2.1617994733489287,54.16,GiB,7.2,brisc,basic,SEAAD,multi-threaded
+Embedding,276.509422720992,s,false,19.884053904570244,49.19,GiB,6.5,brisc,basic,SEAAD,multi-threaded
+Plot embedding,5.140494113002205,s,false,0.36965778971734836,49.15,GiB,6.5,brisc,basic,SEAAD,multi-threaded
+Find markers,4.624037183995824,s,false,0.33251888387212614,49.15,GiB,6.5,brisc,basic,SEAAD,multi-threaded
