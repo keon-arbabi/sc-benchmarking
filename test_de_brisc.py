@@ -72,7 +72,7 @@ with timers('Differential expression'):
             for cell_type, (_, obs, _) in data_pb.items()
         }
         de_results = data_pb\
-            .library_size()\
+            .library_size(num_threads=1)\
             .DE(formula,
                 contrasts=contrasts,
                 group='cytokine',
