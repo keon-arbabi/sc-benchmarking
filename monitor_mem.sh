@@ -4,98 +4,106 @@
 DEFAULT_INTERVAL=0.25
 MONITOR_PID_FILE="/tmp/memory_monitor_script.pid"
 
-# Helper Functions
-usage() {
-    echo "Usage: $0 [-p] <PID_to_monitor> [-i <interval_seconds>]"
-    echo ""
-    echo "Examples:"
-    echo "  $0 12345"
-    echo "  $0 -p 12345 -i 10"
-    echo ""
-    echo "To run in the background: $0 <PID> &"
-    echo "To stop a backgrounded monitor: kill \$(cat ${MONITOR_PID_FILE})"
-    exit 1
-}
-
 cleanup() {
     rm -f "$MONITOR_PID_FILE"
     exit 0
 }
 
-# Argument Parsing
+# Recursively find all descendant PIDs
+get_process_tree() {
+    local parent=$1
+    local pids="$parent"
+    local current="$parent"
+    
+    while [ -n "$current" ]; do
+        local new=""
+        for pid in $current; do
+            if [ -d "/proc/$pid/task" ]; then
+                for task in /proc/$pid/task/*/children; do
+                    [ -r "$task" ] && new="$new $(cat "$task" 2>/dev/null)"
+                done
+            fi
+        done
+        current="$new"
+        [ -n "$new" ] && pids="$pids $new"
+    done
+    echo "$pids" | tr ' ' '\n' | sort -u | tr '\n' ' '
+}
+
+# Get PSS (Proportional Set Size) from /proc/PID/smaps
+get_pss() {
+    [ -r "/proc/$1/smaps" ] && \
+        awk '/^Pss:/ {sum += $2} END {print sum+0}' "/proc/$1/smaps" 2>/dev/null || echo "0"
+}
+
+# Get RSS from /proc/PID/status as fallback
+get_rss() {
+    [ -r "/proc/$1/status" ] && awk '
+        /^Rss(Anon|File|Shmem):/ {sum += $2} 
+        END {print sum+0}
+    ' "/proc/$1/status" 2>/dev/null || echo "0"
+}
+
+# Get shared memory usage in KB
+get_shm_kb() {
+    df /dev/shm 2>/dev/null | tail -1 | awk '{print $3+0}'
+}
+
+# Parse arguments
 TARGET_PID=""
 INTERVAL="$DEFAULT_INTERVAL"
 
 # Handle positional PID for backward compatibility
-if [[ "$1" =~ ^[0-9]+$ ]]; then
-    TARGET_PID="$1"
-    shift
-fi
+[[ "$1" =~ ^[0-9]+$ ]] && { TARGET_PID="$1"; shift; }
 
-while getopts ":p:i:h" opt; do
-    case ${opt} in
-        p ) TARGET_PID=$OPTARG ;;
-        i ) INTERVAL=$OPTARG ;;
-        h ) usage ;;
-        \? ) echo "Invalid option: $OPTARG" 1>&2; usage ;;
-        : ) echo "Invalid option: $OPTARG requires an argument" 1>&2; usage ;;
+while getopts ":p:i:" opt; do
+    case $opt in
+        p) TARGET_PID="$OPTARG" ;;
+        i) INTERVAL="$OPTARG" ;;
+        *) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
     esac
 done
 
-if [ -z "$TARGET_PID" ]; then
-    echo "Error: You must specify a PID."
-    usage
-fi
+[ -z "$TARGET_PID" ] && { echo "Error: PID required." >&2; exit 1; }
+[ ! -d "/proc/$TARGET_PID" ] && \
+    { echo "Error: PID $TARGET_PID not found." >&2; exit 1; }
 
-# Main Logic
-
-# Check if target PID exists initially
-if [ ! -d "/proc/$TARGET_PID" ]; then
-    echo "Error: Process with PID $TARGET_PID not found."
-    exit 1
-fi
-
-# Store the PID of this monitoring script and set up cleanup
+# Setup
 echo $$ > "$MONITOR_PID_FILE"
 trap cleanup SIGINT SIGTERM
 
-while true; do
-    # Check if the target process still exists by checking for its /proc entry
-    if [ ! -d "/proc/$TARGET_PID" ]; then
-        cleanup
-    fi
+# Store initial shared memory
+INITIAL_SHM=$(get_shm_kb)
 
-    # Parse /proc/$TARGET_PID/status for memory components
-    if [ -f "/proc/$TARGET_PID/status" ]; then
-        PROC_MEM_INFO=$(awk '
-            BEGIN {
-                rss_anon=0; rss_file=0; rss_shmem=0;
-            }
-            /^RssAnon:/ {rss_anon=$2}
-            /^RssFile:/ {rss_file=$2}
-            /^RssShmem:/ {rss_shmem=$2}
-            END {
-                rss_sum = rss_anon + rss_file + rss_shmem;
-                print rss_sum;
-            }
-        ' "/proc/$TARGET_PID/status" 2>/dev/null)
-
-        if [ -n "$PROC_MEM_INFO" ]; then
-            read -r P_RSS_SUM<<< "$PROC_MEM_INFO"
-
-            # Calculate memory percentage
-            TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-            PERCENT_MEM="0.0"
-            if [ "$TOTAL_MEM_KB" -gt 0 ] && [ "$P_RSS_SUM" -gt 0 ]; then
-                PERCENT_MEM=$(awk -v rss="$P_RSS_SUM" -v total="$TOTAL_MEM_KB" 'BEGIN {printf "%.2f", (rss/total)*100}')
+# Main monitoring loop
+while [ -d "/proc/$TARGET_PID" ]; do
+    # Sum memory for all processes in tree
+    total_mem=0
+    for pid in $(get_process_tree "$TARGET_PID"); do
+        if [ -d "/proc/$pid" ]; then
+            pss=$(get_pss "$pid")
+            if [ "$pss" -gt 0 ]; then
+                total_mem=$((total_mem + pss))
+            else
+                rss=$(get_rss "$pid")
+                total_mem=$((total_mem + rss))
             fi
-
-            # Output: RSS_in_KiB, Percentage
-            echo "$P_RSS_SUM, $PERCENT_MEM"
         fi
-    else
-        break
-    fi
-
+    done
+    
+    # Add shared memory delta
+    shm_delta=$(($(get_shm_kb) - INITIAL_SHM))
+    [ "$shm_delta" -gt 0 ] && total_mem=$((total_mem + shm_delta))
+    
+    # Calculate percentage
+    total_system=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+    percent="0.0"
+    [ "$total_system" -gt 0 ] && [ "$total_mem" -gt 0 ] && \
+        percent=$(awk -v m="$total_mem" -v t="$total_system" \
+                  'BEGIN {printf "%.2f", (m/t)*100}')
+    
+    echo "$total_mem, $percent"
     sleep "$INTERVAL"
 done
+
+cleanup
