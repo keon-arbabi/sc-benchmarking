@@ -3,52 +3,66 @@ suppressPackageStartupMessages({
   library(benchmarkme)
   library(pryr)
   library(processx)
-  library(hdf5r)
 })
 
 .this_file_path <- NULL
 try({.this_file_path <- dirname(sys.frame(1)$ofile)}, silent = TRUE)
 if (is.null(.this_file_path)) .this_file_path <- "."
 .MONITOR_MEM_SH_PATH <- normalizePath(
-  file.path(.this_file_path, "monitor_mem.sh"),
-  mustWork = FALSE
+  file.path(.this_file_path, "monitor_mem.sh"), mustWork = FALSE
 )
 
 MemoryTimer = function(silent = TRUE) {
   env = environment()
   env$timings = list()
-  env$delay = 0.10
   pid = Sys.getpid()
   
   with_timer = function(message, expr) {
     start = Sys.time()
-    if (!silent) {
-      cat(paste0(message, '...\n'))
-    }
+    if (!silent) cat(paste0(message, '...\n'))
     result = NULL
     aborted = FALSE
+    # Start monitor with fast sampling
     curr_process <- process$new(
-        command = .MONITOR_MEM_SH_PATH,
-        args = c("-p", as.character(pid)),
-        stdout = "|"
-      )
+      command = .MONITOR_MEM_SH_PATH,
+      args = c("-p", as.character(pid), "-i", "0.1"),
+      stdout = "|"
+    )
     process_pid <- curr_process$get_pid()
-    Sys.sleep(env$delay)
+    # Startup delay
+    Sys.sleep(0.2) 
+    
+    # Store error for re-throwing
+    error_obj <- NULL
+    
     tryCatch({      
       result = invisible(eval(substitute(expr), parent.frame()))
     }, error = function(e) {
-      aborted = TRUE
-      stop(e)
+      aborted <<- TRUE  # Use <<- to modify outer scope
+      error_obj <<- e
     }, finally = {
       duration = as.numeric(difftime(Sys.time(), start, units = 'secs'))
       processx::run("kill", args = c(as.character(process_pid)))
       stdout_output <- curr_process$read_all_output()
       con <- textConnection(stdout_output) 
-      df <- read.csv(con, header = FALSE, sep = ",", strip.white = TRUE, 
-        col.names = c("Integer", "Percentage"))
+      # Handle empty output
+      df <- tryCatch({
+        read.csv(con, header = FALSE, sep = ",", strip.white = TRUE, 
+          col.names = c("Integer", "Percentage"))
+      }, error = function(e) {
+        data.frame(Integer = 0, Percentage = 0.0)
+      })
       close(con)
-      peak_mem <- max(df$Integer, na.rm = TRUE)
-      percent <- max(df$Percentage, na.rm = TRUE)
+      # Ensure valid data
+      if (nrow(df) == 0 || all(is.na(df$Integer))) {
+        peak_mem <- 0
+        percent <- 0.0
+      } else {
+        peak_mem <- max(df$Integer, na.rm = TRUE)
+        percent <- max(df$Percentage, na.rm = TRUE)
+        if (is.infinite(peak_mem)) peak_mem <- 0
+        if (is.infinite(percent)) percent <- 0.0
+      }
       
       new_memory <- peak_mem / 1024 / 1024
       new_percent <- percent
@@ -74,9 +88,14 @@ MemoryTimer = function(silent = TRUE) {
       if (!silent) {
         time_str = format_time(duration)
         status = if (aborted) 'aborted after' else 'took'
-        cat(sprintf('%s %s %s\n\n', message, status, time_str))
+        cat(sprintf(
+          '%s %s %s using %.2f GiB\n\n', 
+          message, status, time_str, new_memory))
       }
     })
+    # Re-throw error after cleanup
+    if (!is.null(error_obj)) stop(error_obj)
+    
     gc()
     return(invisible(result))
   }
@@ -86,15 +105,11 @@ MemoryTimer = function(silent = TRUE) {
     
     if (!is.null(unit)) {
       converted = switch(unit,
-                        "s" = duration,
-                        "ms" = duration * 1000,
-                        "us" = duration * 1000000,
-                        "µs" = duration * 1000000,
-                        "ns" = duration * 1000000000,
-                        "m" = duration / 60,
-                        "h" = duration / 3600,
-                        "d" = duration / 86400,
-                        stop("Unsupported unit: ", unit))
+        "s" = duration, "ms" = duration * 1000,
+        "us" = duration * 1000000, "µs" = duration * 1000000,
+        "ns" = duration * 1000000000, "m" = duration / 60,
+        "h" = duration / 3600, "d" = duration / 86400,
+        stop("Unsupported unit: ", unit))
       return(paste0(format(converted, scientific = FALSE), unit))
     }
     
@@ -109,11 +124,9 @@ MemoryTimer = function(silent = TRUE) {
     )
     
     parts = c()
-    
     for (unit in units) {
       threshold = unit$threshold
       suffix = unit$suffix
-      
       if (duration >= threshold || 
           (length(parts) == 0 && threshold == 0.000000001)) {
         if (threshold >= 1) {
@@ -179,14 +192,10 @@ MemoryTimer = function(silent = TRUE) {
   to_dataframe = function(sort = TRUE, unit = NULL) {
     if (length(env$timings) == 0) {
       return(data.frame(
-        operation = character(0),
-        duration = numeric(0),
-        duration_unit = character(0),
-        aborted = logical(0),
-        percentage = numeric(0),
-        memory = numeric(0),
-        memory_unit = character(0),
-        percent_mem = numeric(0)
+        operation = character(0), duration = numeric(0),
+        duration_unit = character(0), aborted = logical(0),
+        percentage = numeric(0), memory = numeric(0),
+        memory_unit = character(0), percent_mem = numeric(0)
       ))
     }
     
@@ -204,15 +213,11 @@ MemoryTimer = function(silent = TRUE) {
     
     if (!is.null(unit)) {
       durs = switch(unit,
-                   "s" = durs,
-                   "ms" = durs * 1000,
-                   "us" = durs * 1000000,
-                   "µs" = durs * 1000000,
-                   "ns" = durs * 1000000000,
-                   "m" = durs / 60,
-                   "h" = durs / 3600,
-                   "d" = durs / 86400,
-                   stop("Unsupported unit: ", unit))
+        "s" = durs, "ms" = durs * 1000,
+        "us" = durs * 1000000, "µs" = durs * 1000000,
+        "ns" = durs * 1000000000, "m" = durs / 60,
+        "h" = durs / 3600, "d" = durs / 86400,
+        stop("Unsupported unit: ", unit))
       duration_unit = unit
     } else {
       duration_unit = "s" 
@@ -271,7 +276,12 @@ system_info <- function() {
 }
 
 read_h5ad_obs <- function(path) {
-  h5_file <- H5File$new(path, mode = "r")
+  # Load hdf5r only when needed
+  if (!requireNamespace("hdf5r", quietly = TRUE)) {
+    stop("Package 'hdf5r' required for reading h5ad files")
+  }
+  
+  h5_file <- hdf5r::H5File$new(path, mode = "r")
   on.exit(h5_file$close_all(), add = TRUE)
 
   obs_group <- h5_file[["obs"]]
@@ -306,7 +316,8 @@ read_h5ad_obs <- function(path) {
   } else {
     for (col in data_cols) {
       item <- obs_group[[col]]
-      if (inherits(item, "H5Group") && all(c("codes", "categories") %in% item$names)) {
+      if (inherits(item, "H5Group") && 
+          all(c("codes", "categories") %in% item$names)) {
           codes <- item[["codes"]][]
           levels <- item[["categories"]][]
           obs_list[[col]] <- factor(levels[codes + 1], levels = levels)

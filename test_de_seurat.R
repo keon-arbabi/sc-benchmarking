@@ -1,5 +1,4 @@
 suppressPackageStartupMessages({
-  library(tidyverse)
   library(dplyr)
   library(Seurat)
   library(BPCells)

@@ -9,15 +9,15 @@ from utils_local import MemoryTimer, system_info
 # NUM_THREADS = int(sys.argv[3])
 # OUTPUT_PATH = sys.argv[4]
 
-DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
-NUM_THREADS = -1
-OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_-1.csv'
-
 DATASET_NAME = 'PBMC'
 DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
 NUM_THREADS = -1
 OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_PBMC_-1.csv'
+
+DATASET_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_-1.csv'
 
 print('--- Params ---')
 print('brisc basic')

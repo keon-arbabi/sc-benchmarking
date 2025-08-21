@@ -4,6 +4,7 @@ import os
 import time
 import socket
 import subprocess
+import warnings
 import numpy as np
 import polars as pl
 import pandas as pd
@@ -16,7 +17,6 @@ _MONITOR_MEM_SH_PATH = os.path.join(
     os.path.dirname(__file__), 'monitor_mem.sh')
 
 class MemoryTimer:
-    
     def __init__(self, silent=True):
         self.timings = {}
         self.silent = silent
@@ -29,13 +29,11 @@ class MemoryTimer:
         def timer():
             if not self.silent:
                 print(f'{message}...')
-                
-            # Start memory monitor with fast sampling
+            # Start monitor with fast sampling
             monitor = subprocess.Popen(
                 [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', '0.1'],
                 stdout=subprocess.PIPE, text=True
             )
-            
             time.sleep(0.2)  # Startup delay
             try:
                 yield
@@ -45,26 +43,23 @@ class MemoryTimer:
                 raise e
             finally:
                 duration = default_timer() - start
-                
                 # Stop monitor and get output
                 subprocess.run(['kill', str(monitor.pid)])
                 output, _ = monitor.communicate()
-                
-                # Parse memory readings (memory_kb, percent)
+                # Parse memory readings
                 try:
-                    data = np.loadtxt(io.StringIO(output), delimiter=',')
-                except (ValueError, UserWarning) as e:
-                    # Handle empty output - use minimal defaults
-                    data = np.array([[0.0, 0.0]])
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        data = np.loadtxt(io.StringIO(output), delimiter=',')
+                except (ValueError, UserWarning):
+                    data = np.array([[0.0, 0.0]])  # Empty output default
                 
                 if data.size == 0:
-                    # Another safeguard for empty data
                     data = np.array([[0.0, 0.0]])
                 elif data.ndim == 1:
                     data = data[None, :]
                     
                 max_mem = np.max(data, axis=0)
-                
                 memory_gb = np.round(max_mem[0] / 1024 / 1024, 2)
                 percent_mem = np.round(max_mem[1], 1)
                 
@@ -94,7 +89,6 @@ class MemoryTimer:
                         'aborted': aborted,
                     }
                 gc.collect()
-
         return timer()
 
     def print_summary(self, sort=True, unit=None):
@@ -118,7 +112,6 @@ class MemoryTimer:
 
     def _format_time(self, duration, unit=None):
         if unit:
-            # Fixed unit conversion
             conversions = {
                 's': 1, 'ms': 1000, 'us': 1e6, 'µs': 1e6,
                 'ns': 1e9, 'm': 1/60, 'h': 1/3600, 'd': 1/86400
@@ -127,7 +120,6 @@ class MemoryTimer:
                 raise ValueError(f'Unsupported unit: {unit}')
             return f'{duration * conversions[unit]}{unit}'
         
-        # Auto-format with appropriate units
         units = [
             (86400, 'd'), (3600, 'h'), (60, 'm'), (1, 's'),
             (0.001, 'ms'), (1e-6, 'µs'), (1e-9, 'ns')
@@ -162,7 +154,6 @@ class MemoryTimer:
         
         total = sum(info['duration'] for info in self.timings.values())
         
-        # Unit conversion
         conv = 1.0
         if unit:
             conversions = {
@@ -222,10 +213,8 @@ def confusion_matrix_plot(sc_obs, orig_col, trans_col):
     )
     cm.to_csv('cell_type_confusion.csv')
     
-    # Normalize by row
     norm_cm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
     
-    # Dynamic figure sizing
     height = 6 + norm_cm.shape[0] * 0.05
     width = 8 + norm_cm.shape[1] * 0.05
     
@@ -236,7 +225,6 @@ def confusion_matrix_plot(sc_obs, orig_col, trans_col):
         cbar_kws={'shrink': 0.7}
     )
     
-    # Format colorbar
     cbar = ax.collections[0].colorbar
     cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1])
     cbar.set_ticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
