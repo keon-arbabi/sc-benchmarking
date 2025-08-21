@@ -57,6 +57,7 @@ sc = sc\
             .round()
             .alias('apoe4_dosage'),
         pl.col('PMI')
+            .cast(pl.String)
             .cast(pl.Float64)
             .alias('pmi'))\
     .rename_obs({
