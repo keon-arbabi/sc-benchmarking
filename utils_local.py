@@ -12,9 +12,13 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from timeit import default_timer
 from contextlib import contextmanager
+from tabulate import tabulate
 
 _MONITOR_MEM_SH_PATH = os.path.join(
     os.path.dirname(__file__), 'monitor_mem.sh')
+
+STARTUP_DELAY = 0.10
+POLLING_INTERVAL = '0.05'
 
 class MemoryTimer:
     def __init__(self, silent=True):
@@ -31,10 +35,10 @@ class MemoryTimer:
                 print(f'{message}...')
             # Start monitor with fast sampling
             monitor = subprocess.Popen(
-                [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', '0.1'],
+                [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
                 stdout=subprocess.PIPE, text=True
             )
-            time.sleep(0.2)  # Startup delay
+            time.sleep(STARTUP_DELAY)
             try:
                 yield
                 aborted = False
@@ -52,7 +56,8 @@ class MemoryTimer:
                         warnings.simplefilter("ignore", UserWarning)
                         data = np.loadtxt(io.StringIO(output), delimiter=',')
                 except (ValueError, UserWarning):
-                    data = np.array([[0.0, 0.0]])  # Empty output default
+                     # Empty output default
+                    data = np.array([[0.0, 0.0]]) 
                 
                 if data.size == 0:
                     data = np.array([[0.0, 0.0]])
@@ -89,25 +94,38 @@ class MemoryTimer:
                         'aborted': aborted,
                     }
                 gc.collect()
+                
         return timer()
 
-    def print_summary(self, sort=True, unit=None):
+    def print_summary(self, sort=False, unit=None):
         print('\n--- Timing Summary ---')
-        items = (sorted(self.timings.items(), 
-                       key=lambda x: x[1]['duration'], reverse=True)
+        items = (sorted(self.timings.items(),
+                        key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
         
-        total_time = sum(info['duration'] for _, info in items)
+        total_time = sum(info['duration'] for _, info in items)        
+        table_data = []
+        duration_header = f'Duration ({unit})' if unit else 'Duration'
+        headers = [
+            'Operation', 'Status', duration_header, 
+            '% of Total', 'Memory (GiB)', '% of Avail']
         
         for message, info in items:
             duration = info['duration']
             memory = info['memory']
             pct = (duration / total_time * 100) if total_time else 0
-            status = 'aborted after' if info['aborted'] else 'took'
+            status = 'aborted' if info['aborted'] else 'completed'
             time_str = self._format_time(duration, unit)
-            print(f'{message} {status} {time_str} ({pct:.1f}%) '
-                  f'using {memory} GiB ({info["%mem"]}%)')
+            table_data.append([
+                message,
+                status,
+                time_str,
+                f'{pct:.1f}%',
+                f'{memory}',
+                f'{info["%mem"]}%'
+            ])
         
+        print(tabulate(table_data, headers=headers, tablefmt='simple'))
         print(f'\nTotal time: {self._format_time(total_time, unit)}')
 
     def _format_time(self, duration, unit=None):
@@ -149,7 +167,7 @@ class MemoryTimer:
             })
         
         items = (sorted(self.timings.items(),
-                       key=lambda x: x[1]['duration'], reverse=True)
+                        key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
         
         total = sum(info['duration'] for info in self.timings.values())
@@ -190,16 +208,34 @@ class MemoryTimer:
 def system_info():
     hostname = socket.gethostname()
     user = os.environ.get('USER', 'N/A')
+    
+    # Get CPU cores
     cpu_cores = (os.environ.get('SLURM_CPUS_PER_TASK') or 
                  os.environ.get('SLURM_CPUS_ON_NODE'))
-    
+    if not cpu_cores:
+        try:
+            cpu_cores = os.cpu_count()
+        except NotImplementedError:
+            cpu_cores = 'N/A'
+
+    # Get Memory
     mem_gb = 'N/A'
     try:
+        # First, try SLURM environment variable
         mem_mb = int(os.environ['SLURM_MEM_PER_NODE'])
         mem_gb = f'{mem_mb / 1024:.1f} GB'
     except (KeyError, ValueError):
-        pass
-    
+        # As a fallback, read from /proc/meminfo
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemTotal:'):
+                        mem_kb = int(line.split()[1])
+                        mem_gb = f'{mem_kb / 1024 / 1024:.1f} GB'
+                        break
+        except FileNotFoundError:
+            pass 
+
     print(f'\n--- User Resource Allocation ---')
     print(f'Node: {hostname}')
     print(f'User: {user}')

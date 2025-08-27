@@ -41,10 +41,7 @@ def main():
         script_path = os.path.join(WORK_DIR, script_file)
 
         for d_name, d_paths in DATASETS.items():
-            param_sets = [()]
-            if 'brisc' in name:
-                threads = [-1, 1]
-                param_sets = [(t,) for t in threads]
+            param_sets = [(-1,), (1,)] if 'brisc' in name else [()]
 
             for params_tuple in param_sets:
                 job_name_parts = [name, d_name] + [str(p) for p in params_tuple]

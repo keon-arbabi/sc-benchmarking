@@ -1,6 +1,8 @@
+import gc
 import sys
 import polars as pl  
-from single_cell import SingleCell  
+sys.path.append('/home/karbabi') 
+from single_cell_keon import SingleCell  
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
@@ -9,23 +11,25 @@ from utils_local import MemoryTimer, system_info
 # NUM_THREADS = int(sys.argv[3])
 # OUTPUT_PATH = sys.argv[4]
 
-DATASET_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
-NUM_THREADS = -1
-OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_PBMC_-1.csv'
+# DATASET_NAME = 'PBMC'
+# DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+# NUM_THREADS = -1
+# OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_PBMC_-1.csv'
 
 DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
-NUM_THREADS = -1
-OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_-1.csv'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+NUM_THREADS = 1
+OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_1.csv'
+
+system_info()
 
 print('--- Params ---')
 print('brisc basic')
+print(f'{sys.version=}')
 print(f'{DATASET_NAME=}')
 print(f'{NUM_THREADS=}')
 
-system_info()
-timers = MemoryTimer(silent=False)
+timers = MemoryTimer(silent=True)
 
 with timers('Load data'):
     data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
@@ -69,7 +73,7 @@ with timers('Plot embedding'):
 with timers('Find markers'):
     markers = data.find_markers('cell_type')
 
-timers.print_summary(sort=False)
+timers.print_summary(unit='s')
 
 timers_df = timers.to_dataframe(sort=False, unit='s')\
     .with_columns(
@@ -82,3 +86,6 @@ timers_df.write_csv(OUTPUT_PATH)
 
 if not all(timers_df['aborted']):
     print('--- Completed successfully ---')
+
+del timers, timers_df, data, markers
+gc.collect()

@@ -1,80 +1,92 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Memory monitor for single-cell analysis - tracks process trees
-DEFAULT_INTERVAL=0.1
+DEFAULT_INTERVAL=0.01
+MONITOR_PID_FILE="/tmp/memory_monitor_script.pid"
 
-cleanup() { exit 0; }
-
-# Get RSS from /proc/PID/status
-get_rss() {
-    [ -r "/proc/$1/status" ] && \
-        awk '/^VmRSS:/ {print $2+0; exit}' "/proc/$1/status" 2>/dev/null || \
-        echo "0"
+# Function to clean up the PID file on exit
+cleanup() {
+    rm -f "$MONITOR_PID_FILE"
+    exit 0
 }
 
-# Get all PIDs in process tree using ps
-get_process_tree() {
-    local root_pid=$1 all_pids="$1" to_check="$1" depth=0
-    
-    while [ -n "$to_check" ] && [ $depth -lt 10 ]; do
-        local new_pids=""
-        for pid in $to_check; do
-            local children=$(ps --no-headers -o pid --ppid $pid 2>/dev/null | \
-                           tr '\n' ' ')
-            [ -n "$children" ] && new_pids="$new_pids $children"
-        done
-        
-        [ -n "$new_pids" ] && {
-            all_pids="$all_pids $new_pids"
-            to_check="$new_pids"
-        } || break
-        ((depth++))
+# Function to get immediate child PIDs of a given parent PID
+get_child_pids() {
+    local ppid=$1
+    pgrep -P "$ppid"
+}
+
+# Function to recursively get all descendant PIDs
+get_all_descendant_pids() {
+    local ppid=$1
+    local children=$(get_child_pids "$ppid")
+    for pid in $children; do
+        echo "$pid"
+        get_all_descendant_pids "$pid"
     done
-    
-    echo "$all_pids" | tr ' ' '\n' | sort -u | tr '\n' ' '
 }
 
-# Sum memory across process tree
-get_total_memory() {
-    local total_mem=0
-    for pid in $(get_process_tree $1); do
-        if [ -d "/proc/$pid" ]; then
-            local mem=$(get_rss $pid)
-            total_mem=$((total_mem + mem))
-        fi
-    done
-    echo $total_mem
-}
+TARGET_PID=""
+INTERVAL="$DEFAULT_INTERVAL"
 
-# Parse arguments
-TARGET_PID="" INTERVAL="$DEFAULT_INTERVAL"
-[[ "$1" =~ ^[0-9]+$ ]] && { TARGET_PID="$1"; shift; }
+# Handle positional PID for backward compatibility
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+    TARGET_PID="$1"
+    shift
+fi
 
-while getopts ":p:i:" opt; do
-    case $opt in
-        p) TARGET_PID="$OPTARG" ;;
-        i) INTERVAL="$OPTARG" ;;
-        *) echo "Usage: $0 [-p PID] [-i INTERVAL]" >&2; exit 1 ;;
+while getopts ":p:i:h" opt; do
+    case ${opt} in
+        p ) TARGET_PID=$OPTARG ;;
+        i ) INTERVAL=$OPTARG ;;
+        h ) usage ;;
+        \? ) echo "Invalid option: $OPTARG" 1>&2; usage ;;
+        : ) echo "Invalid option: $OPTARG requires an argument" 1>&2; usage ;;
     esac
 done
 
-[ -z "$TARGET_PID" ] && { 
-    echo "Error: PID required" >&2; exit 1; 
-}
-[ ! -d "/proc/$TARGET_PID" ] && { 
-    echo "Error: PID $TARGET_PID not found" >&2; exit 1; 
-}
+if [ -z "$TARGET_PID" ]; then
+    echo "Error: You must specify a PID."
+    usage
+fi
 
+# Check if target PID exists initially
+if [ ! -d "/proc/$TARGET_PID" ]; then
+    echo "Error: Process with PID $TARGET_PID not found."
+    exit 1
+fi
+
+# Store the PID of this monitoring script and set up cleanup
+echo $$ > "$MONITOR_PID_FILE"
 trap cleanup SIGINT SIGTERM
-TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
 
-# Main loop
-while [ -d "/proc/$TARGET_PID" ]; do
-    TOTAL_KB=$(get_total_memory $TARGET_PID)
-    PERCENT="0.00"
-    [ "$TOTAL_MEM_KB" -gt 0 ] && [ "$TOTAL_KB" -gt 0 ] && \
-        PERCENT=$(awk -v m="$TOTAL_KB" -v t="$TOTAL_MEM_KB" \
-                  'BEGIN {printf "%.2f", (m/t)*100}')
-    echo "$TOTAL_KB, $PERCENT"
+while true; do
+    # Check if the target process still exists
+    if [ ! -d "/proc/$TARGET_PID" ]; then
+        cleanup
+    fi
+
+    ALL_PIDS="$TARGET_PID $(get_all_descendant_pids $TARGET_PID)"
+    TOTAL_PSS_SUM=0
+
+    for pid in $ALL_PIDS; do
+        if [ -f "/proc/$pid/smaps" ]; then
+            # Sum up the PSS values from the smaps file
+            PSS=$(awk '/^Pss:/ {sum+=$2} END {print sum}' "/proc/$pid/smaps" 2>/dev/null)
+            if [ -n "$PSS" ]; then
+                TOTAL_PSS_SUM=$((TOTAL_PSS_SUM + PSS))
+            fi
+        fi
+    done
+
+    # Calculate memory percentage
+    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    PERCENT_MEM="0.0"
+    if [ "$TOTAL_MEM_KB" -gt 0 ] && [ "$TOTAL_PSS_SUM" -gt 0 ]; then
+        PERCENT_MEM=$(awk -v pss="$TOTAL_PSS_SUM" -v total="$TOTAL_MEM_KB" 'BEGIN {printf "%.2f", (pss/total)*100}')
+    fi
+
+    # Output: PSS_in_KiB, Percentage
+    echo "$TOTAL_PSS_SUM, $PERCENT_MEM"
+
     sleep "$INTERVAL"
-done 
+done

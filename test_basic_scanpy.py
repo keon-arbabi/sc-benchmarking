@@ -1,4 +1,3 @@
-import gc
 import sys
 import polars as pl  
 import scanpy as sc  
@@ -6,13 +5,13 @@ import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-DATASET_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-OUTPUT_PATH = sys.argv[3]
+# DATASET_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# OUTPUT_PATH = sys.argv[3]
 
-DATASET_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
-OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
+DATASET_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_1.csv'
 
 system_info()
 timers = MemoryTimer(silent=True)
@@ -52,9 +51,10 @@ with timers('Clustering (3 res.)'):
     for res in [0.5, 1.0, 2.0]:
         sc.tl.leiden(
             data, 
+            resolution=res,
             flavor='igraph',
-            key_added=f'leiden_res_{res:4.2f}', 
-            resolution=res)
+            n_iterations=2,
+            key_added=f'leiden_res_{res:4.2f}')
 
 with timers('Plot embedding'):
     sc.pl.umap(data, color=['cell_type'])
