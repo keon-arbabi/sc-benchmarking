@@ -1,6 +1,7 @@
 import gc
 import io
 import os
+import sys
 import time
 import socket
 import subprocess
@@ -12,6 +13,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from timeit import default_timer
 from contextlib import contextmanager
+from typing import ContextManager
 from tabulate import tabulate
 
 _MONITOR_MEM_SH_PATH = os.path.join(
@@ -25,7 +27,7 @@ class MemoryTimer:
         self.timings = {}
         self.silent = silent
 
-    def __call__(self, message):
+    def __call__(self, message: str) -> ContextManager[None]:
         start = default_timer()
         pid = os.getpid()
 
@@ -66,7 +68,7 @@ class MemoryTimer:
                     
                 max_mem = np.max(data, axis=0)
                 memory_gb = np.round(max_mem[0] / 1024 / 1024, 2)
-                percent_mem = np.round(max_mem[1], 1)
+                percent_mem = np.round(max_mem[1], 2)
                 
                 if not self.silent:
                     status = 'aborted after' if aborted else 'took'
@@ -120,9 +122,9 @@ class MemoryTimer:
                 message,
                 status,
                 time_str,
-                f'{pct:.1f}%',
+                f'{pct:.2f}%',
                 f'{memory}',
-                f'{info["%mem"]}%'
+                f'{info["%mem"]:.2f}%'
             ])
         
         print(tabulate(table_data, headers=headers, tablefmt='simple'))
@@ -136,7 +138,7 @@ class MemoryTimer:
             }
             if unit not in conversions:
                 raise ValueError(f'Unsupported unit: {unit}')
-            return f'{duration * conversions[unit]}{unit}'
+            return f'{duration * conversions[unit]:.2f}{unit}'
         
         units = [
             (86400, 'd'), (3600, 'h'), (60, 'm'), (1, 's'),
@@ -205,6 +207,10 @@ class MemoryTimer:
             'percent_mem': percent_mem,
         })
 
+def print_df(df, num_rows=-1, num_columns=-1):
+    with pl.Config(tbl_rows=num_rows, tbl_cols=num_columns):
+        print(df)
+
 def system_info():
     hostname = socket.gethostname()
     user = os.environ.get('USER', 'N/A')
@@ -241,13 +247,83 @@ def system_info():
     print(f'User: {user}')
     print(f'CPU Cores Allocated: {cpu_cores}')
     print(f'Memory Allocated: {mem_gb}')
+    print(f'{sys.version=}')
 
-def confusion_matrix_plot(sc_obs, orig_col, trans_col):
+def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0'):
+    from tempfile import NamedTemporaryFile
+    
+    cluster = os.environ.get('CLUSTER')
+    runtime = f'{hours}:00:00'
+    job_name = job_name.replace(' ', '_')
+    
+    try:
+        with NamedTemporaryFile(
+                'w', dir=os.environ.get('SCRATCH', '.'),
+                suffix='.sh', delete=False) as temp_file:
+            
+            partition = ''
+            if cluster in ('trillium', 'niagara'):
+                partition = '#SBATCH -p compute\n'
+            
+            memory_line = ''
+            if memory != '0':
+                memory_line = f'#SBATCH --mem {memory}\n'
+            
+            print(
+                f'#!/bin/bash\n'
+                f'{partition}'
+                f'#SBATCH -N 1\n'
+                f'#SBATCH -n {CPUs}\n'
+                f'{memory_line}'
+                f'#SBATCH -t {runtime}\n'
+                f'#SBATCH -J {job_name}\n'
+                f'#SBATCH -o {log_file}\n'
+                f'set -euo pipefail; {command}\n',
+                file=temp_file)
+        
+        sbatch = ('.sbatch' if cluster in ('trillium', 'niagara') 
+                  else 'sbatch')
+        result = subprocess.run(
+            [sbatch, temp_file.name],
+            capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f'Error submitting job {job_name}: {result.stderr}')
+        else:
+            print(f'Job submitted: {result.stdout.strip()}')
+    finally:
+        try:
+            os.unlink(temp_file.name)
+        except (NameError, FileNotFoundError):
+            pass
+
+def transfer_accuracy(obs, orig_col, trans_col):
+    print_df(obs
+        .with_columns(
+            pl.col([orig_col, trans_col]).cast(pl.String))
+        .group_by(orig_col)
+        .agg(
+            n_correct=pl.col(orig_col).eq(pl.col(trans_col)).sum(),
+            n_total=pl.len())
+        .pipe(lambda df: pl.concat([
+            df, 
+            df.sum().with_columns(pl.lit('Total').alias(orig_col))]))
+        .with_columns(
+            percent_correct=pl.col('n_correct') / pl.col('n_total') * 100)
+        .sort(
+            pl.when(pl.col(orig_col) == 'Total').then(1).otherwise(0),
+            pl.col(orig_col))
+        .sort('percent_correct', descending=True)
+        .rename({orig_col: 'cell_type'})
+    )
+
+def confusion_matrix_plot(sc_obs, orig_col, trans_col, filename):
     cm = pd.crosstab(
         sc_obs[orig_col].to_pandas(),
         sc_obs[trans_col].to_pandas()
     )
-    cm.to_csv('cell_type_confusion.csv')
+    with pd.option_context('display.max_columns', None):
+        print(cm)
     
     norm_cm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
     
@@ -270,5 +346,5 @@ def confusion_matrix_plot(sc_obs, orig_col, trans_col):
     ax.set_xlabel(f'Predicted: {trans_col}')
     ax.set_ylabel(f'Original: {orig_col}')
     plt.tight_layout()
-    plt.savefig('cell_type_confusion.png', dpi=300)
+    plt.savefig(filename, dpi=300)
     plt.show()

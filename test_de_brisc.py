@@ -1,30 +1,40 @@
+import os 
 import gc
 import sys
 import polars as pl  
+sys.path.append('/home/karbabi') 
 from single_cell import SingleCell  
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-DATASET_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-NUM_THREADS = int(sys.argv[3])
-OUTPUT_PATH = sys.argv[4]
+os.environ['R_HOME'] = os.path.expanduser('~/miniforge3/lib/R')
+from ryp import r
+r('.libPaths(c(file.path(Sys.getenv("CONDA_PREFIX"), "lib/R/library")))')
+
+# DATASET_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# NUM_THREADS = int(sys.argv[3])
+# OUTPUT_PATH = sys.argv[4]
+
+DATASET_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH_1= 'sc-benchmarking/output/test_de_brisc_PBMC_-1_timers.csv'
+OUTPUT_PATH_2= 'sc-benchmarking/output/test_de_brisc_PBMC_-1_table.csv'
 
 DATASET_NAME = 'SEAAD'
 DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
 NUM_THREADS = -1
 OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_SEAAD_-1.csv'
 
-DATASET_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
-NUM_THREADS = -1
-OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
+system_info()
 
 print('--- Params ---')
+print('brisc de')
+print(f'{DATASET_NAME=}')
 print(f'{NUM_THREADS=}')
 
-system_info()
-timers = MemoryTimer(silent=True)
+timers = MemoryTimer(silent=False)
 
 with timers('Load data'):
     data_sc = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
@@ -39,55 +49,55 @@ with timers('Quality control'):
 with timers('Doublet detection'):
     data_sc = data_sc.find_doublets(batch_column='sample')
 
+with timers('Quality control'):
+    data_sc = data_sc.filter_obs(
+        pl.col('doublet').not_() & pl.col('passed_QC'))
+
 with timers('Data transformation (pseudobulk / normalization)'):
     data_pb = data_sc.pseudobulk('sample', 'cell_type')
 
 del data_sc; gc.collect()
 
 with timers('Data transformation (pseudobulk / normalization)'):
-    if DATASET_NAME == 'SEAAD':
-        data_pb = data_pb.qc('ad_dx', verbose=False)
-
-    elif DATASET_NAME == 'PBMC':
-        data_pb = data_pb.qc('treatment', verbose=False)
+    data_pb = data_pb.qc('cond', verbose=False)
 
 with timers('Differential expression'):
     if DATASET_NAME == 'SEAAD':
-        formula = '~ ad_dx + apoe4_dosage + sex + age_at_death + ' \
+        formula = '~ cond + apoe4_dosage + sex + age_at_death + ' \
             'log2(num_cells) + log2(library_size)'
         de = data_pb\
             .library_size()\
             .DE(formula,
-                group='ad_dx',
+                group='cond',
                 verbose=False)
-                
+
     elif DATASET_NAME == 'PBMC':
         formula = '~ 0 + cytokine + donor + ' \
             'log2(num_cells) + log2(library_size)'
-        contrasts = {
-            cell_type: {
-                f'{c}_vs_PBS': f'cytokine{c} - cytokinePBS'
-                for c in obs['cytokine'].unique() if c != 'PBS'
-            }
-            for cell_type, (_, obs, _) in data_pb.items()
-        }
-        de_results = data_pb\
-            .library_size(num_threads=1)\
+        contrasts = {'IFN_gamma_vs_PBS': 'cytokineIFN_gamma - cytokinePBS'}
+        de = data_pb\
+            .library_size()\
             .DE(formula,
                 contrasts=contrasts,
                 group='cytokine',
                 categorical_columns=['donor', 'cytokine'],
                 verbose=True)
 
-timers.print_summary(sort=False)
+de.table.write_csv(OUTPUT_PATH_2)                
 
-timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
-    pl.lit('brisc').alias('library'),
-    pl.lit('de').alias('test'),
-    pl.lit(DATASET_NAME).alias('dataset'),
-    pl.lit(NUM_THREADS).alias('num_threads'),
-)
+timers.print_summary(unit='s')
+
+timers_df = timers.to_dataframe(sort=False, unit='s')\
+    .with_columns(
+        pl.lit('brisc').alias('library'),
+        pl.lit('de').alias('test'),
+        pl.lit(DATASET_NAME).alias('dataset'),
+        pl.lit('single-threaded' if NUM_THREADS == 1 else 'multi-threaded')
+        .alias('num_threads'))
 timers_df.write_csv(OUTPUT_PATH)
 
-if not all(timers_df['aborted']):
+if not any(timers_df['aborted']):
     print('--- Completed successfully ---')
+
+del timers, timers_df, data_pb, de
+gc.collect()

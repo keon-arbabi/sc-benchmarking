@@ -1,16 +1,13 @@
 suppressPackageStartupMessages({
-  library(parallel)
-  library(benchmarkme)
-  library(pryr)
+  library(dplyr)
   library(processx)
 })
 
-.this_file_path <- NULL
-try({.this_file_path <- dirname(sys.frame(1)$ofile)}, silent = TRUE)
-if (is.null(.this_file_path)) .this_file_path <- "."
-.MONITOR_MEM_SH_PATH <- normalizePath(
-  file.path(.this_file_path, "monitor_mem.sh"), mustWork = FALSE
-)
+.this_file_path <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e) ".")
+.MONITOR_MEM_SH_PATH <- file.path(.this_file_path, "monitor_mem.sh")
+
+STARTUP_DELAY <- 0.10
+POLLING_INTERVAL <- '0.05'
 
 MemoryTimer = function(silent = TRUE) {
   env = environment()
@@ -25,12 +22,12 @@ MemoryTimer = function(silent = TRUE) {
     # Start monitor with fast sampling
     curr_process <- process$new(
       command = .MONITOR_MEM_SH_PATH,
-      args = c("-p", as.character(pid), "-i", "0.1"),
+      args = c("-p", as.character(pid), "-i", POLLING_INTERVAL),
       stdout = "|"
     )
     process_pid <- curr_process$get_pid()
     # Startup delay
-    Sys.sleep(0.2) 
+    Sys.sleep(STARTUP_DELAY) 
     
     # Store error for re-throwing
     error_obj <- NULL
@@ -64,8 +61,8 @@ MemoryTimer = function(silent = TRUE) {
         if (is.infinite(percent)) percent <- 0.0
       }
       
-      new_memory <- peak_mem / 1024 / 1024
-      new_percent <- percent
+      new_memory <- round(peak_mem / 1024 / 1024, 2)
+      new_percent <- round(percent, 2)
       
       if (message %in% names(env$timings)) {
         env$timings[[message]]$duration <- 
@@ -150,7 +147,7 @@ MemoryTimer = function(silent = TRUE) {
     }
   }
   
-  print_summary = function(sort = TRUE, unit = NULL) {
+  print_summary = function(sort = FALSE, unit = NULL) {
     cat('\n--- Timing Summary ---\n')
     
     if (length(env$timings) == 0) {
@@ -167,7 +164,19 @@ MemoryTimer = function(silent = TRUE) {
     
     total_time = sum(sapply(env$timings, function(x) x$duration))
     
-    for (msg in items) {
+    # Create table headers
+    duration_header = if (!is.null(unit)) {
+      paste0('Duration (', unit, ')')
+    } else {
+      'Duration'
+    }
+    headers = c('Operation', 'Status', duration_header, '% of Total', 
+                'Memory (GiB)', '% of Avail')
+    
+    # Create table data
+    table_data = list()
+    for (i in seq_along(items)) {
+      msg = items[i]
       info = env$timings[[msg]]
       duration = info$duration
       percentage = if (total_time > 0) {
@@ -177,13 +186,28 @@ MemoryTimer = function(silent = TRUE) {
       }
       max_mem = info$max_mem
       mem_percent = info$mem_percent
-      status = if (info$aborted) 'aborted after' else 'took'
+      status = if (info$aborted) 'aborted' else 'completed'
       time_str = format_time(duration, unit)
       
-      cat(sprintf(
-        '%s %s %s (%.1f%%) using %.2f GiB (%.1f%%)\n',
-        msg, status, time_str, percentage, max_mem, mem_percent
-      ))
+      table_data[[i]] = c(
+        msg,
+        status,
+        time_str,
+        sprintf('%.2f%%', percentage),
+        sprintf('%.2f', max_mem),
+        sprintf('%.2f%%', mem_percent)
+      )
+    }
+    
+    # Simple table printing (since we don't want to add tabulate dependency)
+    cat(sprintf('%-30s %-10s %-15s %-10s %-13s %-10s\n', 
+                headers[1], headers[2], headers[3], headers[4], 
+                headers[5], headers[6]))
+    cat(paste(rep('-', 90), collapse = ''), '\n')
+    
+    for (row in table_data) {
+      cat(sprintf('%-30s %-10s %-15s %-10s %-13s %-10s\n',
+                  row[1], row[2], row[3], row[4], row[5], row[6]))
     }
     
     cat(sprintf('\nTotal time: %s\n', format_time(total_time, unit)))
@@ -259,15 +283,53 @@ MemoryTimer = function(silent = TRUE) {
 system_info <- function() {
   hostname <- Sys.info()['nodename']
   user <- Sys.getenv("USER")
+  if (user == "") user <- "N/A"
+  
+  # Get CPU cores
   cpu_task <- Sys.getenv("SLURM_CPUS_PER_TASK")
-  cpu_cores <- ifelse(nchar(cpu_task) > 0, cpu_task,
-                      Sys.getenv("SLURM_CPUS_ON_NODE"))
+  cpu_cores <- Sys.getenv("SLURM_CPUS_ON_NODE")
+  
+     if (nchar(cpu_task) > 0) {
+     cpu_cores <- cpu_task
+   } else if (nchar(cpu_cores) == 0) {
+     # Fallback to system detection
+     tryCatch({
+       if (requireNamespace("parallel", quietly = TRUE)) {
+         cpu_cores <- parallel::detectCores()
+       } else {
+         cpu_cores <- "N/A"
+       }
+     }, error = function(e) {
+       cpu_cores <<- "N/A"
+     })
+   }
+  
+  # Get Memory
   mem_gb_str <- "N/A"
   mem_mb_str <- Sys.getenv("SLURM_MEM_PER_NODE")
+  
   if (nchar(mem_mb_str) > 0) {
-    mem_gb <- suppressWarnings(as.numeric(mem_mb_str)) / 1024
-    if (!is.na(mem_gb)) mem_gb_str <- sprintf("%.1f GB", mem_gb)
+    # First, try SLURM environment variable
+    mem_mb <- suppressWarnings(as.numeric(mem_mb_str))
+    if (!is.na(mem_mb)) {
+      mem_gb_str <- sprintf("%.1f GB", mem_mb / 1024)
+    }
+  } else {
+    # As a fallback, read from /proc/meminfo
+    tryCatch({
+      meminfo_lines <- readLines("/proc/meminfo")
+      for (line in meminfo_lines) {
+        if (grepl("^MemTotal:", line)) {
+          mem_kb <- as.numeric(strsplit(line, "\\s+")[[1]][2])
+          mem_gb_str <- sprintf("%.1f GB", mem_kb / 1024 / 1024)
+          break
+        }
+      }
+    }, error = function(e) {
+      # Keep default "N/A"
+    })
   }
+  
   cat('\n--- User Resource Allocation ---\n')
   cat(sprintf('Node: %s\n', hostname))
   cat(sprintf('User: %s\n', user))
@@ -331,4 +393,24 @@ read_h5ad_obs <- function(path) {
   rownames(obs_df) <- index
 
   return(obs_df)
+}
+
+transfer_accuracy <- function(obs_df, orig_col, trans_col) {
+  obs_df %>%
+    mutate(
+      orig = as.character(.data[[orig_col]]),
+      trans = as.character(.data[[trans_col]])) %>%
+    group_by(orig) %>%
+    summarize(
+      n_correct = sum(orig == trans),
+      n_total = n(),
+      .groups = "drop") %>%
+    bind_rows(
+      summarize(
+        .,
+        orig = "Total",
+        n_correct = sum(n_correct),
+        n_total = sum(n_total))) %>%
+    mutate(percent_correct = (n_correct / n_total) * 100) %>%
+    rename(cell_type = orig)
 }

@@ -1,3 +1,4 @@
+import gc
 import sys
 import polars as pl  
 import scanpy as sc  
@@ -5,16 +6,17 @@ import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-# DATASET_NAME = sys.argv[1]
-# DATA_PATH = sys.argv[2]
-# OUTPUT_PATH = sys.argv[3]
-
-DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
-OUTPUT_PATH = 'sc-benchmarking/output/test_basic_brisc_SEAAD_1.csv'
+DATASET_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH = sys.argv[3]
 
 system_info()
-timers = MemoryTimer(silent=True)
+
+print('--- Params ---')
+print('scanpy basic')
+print(f'{DATASET_NAME=}')
+
+timers = MemoryTimer(silent=False)
 
 with timers('Load data'):
     data = sc.read_h5ad(DATA_PATH)
@@ -52,14 +54,14 @@ with timers('Clustering (3 res.)'):
         sc.tl.leiden(
             data, 
             resolution=res,
-            flavor='igraph',
-            n_iterations=2,
+            flavor='igraph', # future default
+            n_iterations=2, # future default
             key_added=f'leiden_res_{res:4.2f}')
 
 with timers('Plot embedding'):
-    sc.pl.umap(data, color=['cell_type'])
+    sc.pl.umap(data, color='cell_type')
     plt.savefig(
-        f'sc-benchmarking/figures/scanpy_embedding.png',
+        f'sc-benchmarking/figures/scanpy_embedding_{DATASET_NAME}.png',
         dpi=300,
         bbox_inches='tight',
         pad_inches='layout')
@@ -67,7 +69,7 @@ with timers('Plot embedding'):
 with timers('Find markers'):
     sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
 
-timers.print_summary(sort=False)
+timers.print_summary(unit='s')
 
 timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('scanpy').alias('library'),
@@ -75,6 +77,11 @@ timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit(DATASET_NAME).alias('dataset'),)
 timers_df.write_csv(OUTPUT_PATH)
 
-if not all(timers_df['aborted']):
+if not any(timers_df['aborted']):
     print('--- Completed successfully ---')
 
+print('\n--- Session Info ---')
+sc.logging.print_header()
+
+del timers, timers_df, data
+gc.collect()

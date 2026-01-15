@@ -18,7 +18,7 @@ timers = TimerMemoryCollection(silent = TRUE)
 scratch_dir <- "projects/def-wainberg/single-cell/BPCells-Scratch"
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "de")
 if (!dir.exists(bpcells_dir_test)) {
-    dir.create(bpcells_dir_test, recursive = TRUE)
+  dir.create(bpcells_dir_test, recursive = TRUE)
 }
 
 if (file.exists(file.path(bpcells_dir_test, size))) {

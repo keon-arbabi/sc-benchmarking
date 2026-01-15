@@ -4,37 +4,38 @@ import warnings
 import polars as pl  
 import scanpy as sc 
 warnings.filterwarnings('ignore')
+sys.path.append('sc-benchmarking')
+from utils_local import MemoryTimer, system_info, transfer_accuracy
 
-work_dir = 'projects/sc-benchmarking'
-data_dir = 'single-cell/SEAAD'
+# DATASET_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# REF_PATH = sys.argv[3]
+# OUTPUT_PATH = sys.argv[4]
 
-sys.path.append(work_dir)
-from utils_local import TimerMemoryCollection, system_info
-
-size = sys.argv[1]
-output = sys.argv[2]
-
-size_ref = {'1M': '600K', '400K': '200K', '20K': '10K'}
+DATASET_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+REF_PATH = 'single-cell/SEAAD/SEAAD_ref.h5ad'
+OUTPUT_PATH = 'sc-benchmarking/output/test_transfer_scanpy_SEAAD.csv'
 
 system_info()
-timers = TimerMemoryCollection(silent=True)
 
 print('--- Params ---')
-print(f'{size=}')
+print('scanpy transfer')
+print(f'{sys.version=}')
+print(f'{DATASET_NAME=}')
 
-#%% Load data (query)
+timers = MemoryTimer(silent=False)
+
 with timers('Load data (query)'):
-    data_query = sc.read_h5ad(f'{data_dir}/SEAAD_raw_{size}.h5ad')
+    data_query = sc.read_h5ad(DATA_PATH)
 
 # Not timed 
-data_query.obs['subclass_orig'] = data_query.obs['subclass']
-data_query.obs = data_query.obs.drop(columns=['subclass'])
+data_query.obs['cell_type_orig'] = data_query.obs['cell_type']
+data_query.obs = data_query.obs.drop(columns=['cell_type'])
 
-#%% Load data (ref)
 with timers('Load data (ref)'):
-    data_ref = sc.read_h5ad(f'{data_dir}/SEAAD_ref_{size_ref[size]}.h5ad')
+    data_ref = sc.read_h5ad(REF_PATH)
 
-#%% Quality control
 with timers('Quality control'):
     data_query.var['mt'] = data_query.var_names.str.startswith('MT-')
     sc.pp.calculate_qc_metrics(
@@ -42,11 +43,9 @@ with timers('Quality control'):
     sc.pp.filter_cells(data_query, min_genes=100, copy=False)
     sc.pp.filter_genes(data_query, min_cells=3, copy=False)
     
-#%% Doublet detection
 with timers('Doublet detection'):
     sc.pp.scrublet(data_query, batch_key='sample', copy=False)
 
-#%% Quality control
 with timers('Quality control'):
     data_query = data_query[
         data_query.obs['predicted_doublet'] == False].copy()
@@ -73,48 +72,33 @@ with timers('Feature selection'):
     data_query = data_query[:, hvg_genes].copy()
 
 # Note: The exemplar data used in the scanpy vignette are scaled
-# Not timed 
-sc.pp.scale(data_ref)
-sc.pp.scale(data_query)
 
-#%% PCA
 with timers('PCA'):
+    sc.pp.scale(data_ref)
+    sc.pp.scale(data_query)
     sc.pp.pca(data_ref)
 
-#%% Transfer labels
 with timers('Transfer labels'):
     sc.pp.neighbors(data_ref)
-    sc.tl.ingest(data_query, data_ref, obs='subclass', embedding_method='pca')
+    sc.tl.ingest(data_query, data_ref, obs='cell_type', embedding_method='pca')
 
 with pl.Config(tbl_rows=-1):
     print('--- Transfer Accuracy ---')
-    df = pl.from_pandas(
-        data_query.obs[['subclass_orig', 'subclass']].reset_index(drop=True))\
-        .with_columns(
-            pl.col(["subclass_orig", "subclass"]).cast(pl.String))\
-        .group_by('subclass')\
-        .agg(
-            n_correct=(pl.col("subclass_orig") == pl.col("subclass")).sum(),
-            n_total=pl.len())\
-        .pipe(lambda df: pl.concat([
-            df,
-            df.sum().with_columns(subclass=pl.lit("Total"))])\
-        .with_columns(
-            percent_correct=pl.col("n_correct") / pl.col("n_total") * 100)\
-        .sort(  
-            pl.when(pl.col("subclass") == "Total").then(1).otherwise(0),
-            pl.col("subclass")))
-    print(df)
-df.write_csv(f'{work_dir}/output/test_transfer_scanpy_{size}_accuracy.csv')
+    obs_df = pl.from_pandas(
+        data_query.obs[['cell_type_orig', 'cell_type']].reset_index(drop=True))
+    print(transfer_accuracy(obs_df, 'cell_type_orig', 'cell_type'))
 
-timers.print_summary(sort=False)
+timers.print_summary(unit='s')
 
-df = timers.to_dataframe(sort=False, unit='s').with_columns(
-    pl.lit('scanpy').alias('library'),
-    pl.lit('transfer').alias('test'),
-    pl.lit(size).alias('size'),
-)
-df.write_csv(output)
+timers_df = timers.to_dataframe(sort=False, unit='s')\
+    .with_columns(
+        pl.lit('scanpy').alias('library'),
+        pl.lit('transfer').alias('test'),
+        pl.lit(DATASET_NAME).alias('dataset'))
+timers_df.write_csv(OUTPUT_PATH)
 
-del data_query, data_ref, timers, df
+if not any(timers_df['aborted']):
+    print('--- Completed successfully ---')
+
+del timers, timers_df, data_query, data_ref, obs_df
 gc.collect()

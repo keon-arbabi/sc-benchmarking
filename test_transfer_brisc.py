@@ -1,36 +1,44 @@
 import gc
 import sys
 import polars as pl  
-from single_cell import SingleCell 
+sys.path.append('/home/karbabi') 
+from single_cell import SingleCell  
+sys.path.append('sc-benchmarking')
+from utils_local import MemoryTimer, system_info, transfer_accuracy
 
-work_dir = 'projects/sc-benchmarking'
-data_dir = 'single-cell/SEAAD'
+# DATASET_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# REF_PATH = sys.argv[3]
+# NUM_THREADS = int(sys.argv[4])
+# OUTPUT_PATH = sys.argv[5]
 
-sys.path.append(work_dir)
-from utils_local import TimerMemoryCollection, system_info
+# DATASET_NAME = 'SEAAD'
+# DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+# REF_PATH = 'single-cell/SEAAD/SEAAD_ref.h5ad'
+# NUM_THREADS = -1
+# OUTPUT_PATH = 'sc-benchmarking/output/test_transfer_brisc_SEAAD_-1.csv'
 
-num_threads = int(sys.argv[1])
-subset = sys.argv[2].lower() == "true"
-size = sys.argv[3]
-output = sys.argv[4]
-
-size_ref = {'1M': '600K', '400K': '200K', '20K': '10K'}
-
-print('--- Params ---')
-print(f'{size=}, {num_threads=}, {subset=}')
+DATASET_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+REF_PATH = 'single-cell/PBMC/ScaleBio_PBMC_ref.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH = 'sc-benchmarking/output/test_transfer_brisc_PBMC_-1.csv'
 
 system_info()
-timers = TimerMemoryCollection(silent=False)
+
+print('--- Params ---')
+print('brisc transfer')
+print(f'{sys.version=}')
+print(f'{DATASET_NAME=}')
+print(f'{NUM_THREADS=}')
+
+timers = MemoryTimer(silent=False)
 
 with timers('Load data (query)'):
-    data_query = SingleCell(
-        f'{data_dir}/SEAAD_raw_{size}.h5ad', num_threads=1)
-    data_query = data_query.set_num_threads(num_threads)
+    data_query = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
 with timers('Load data (ref)'):
-    data_ref = SingleCell(
-        f"{data_dir}/SEAAD_ref_{size_ref[size]}.h5ad", num_threads=1)
-    data_ref = data_ref.set_num_threads(num_threads)
+    data_ref = SingleCell(REF_PATH, num_threads=NUM_THREADS)
     
 with timers('Quality control'):
     data_query = data_query.qc(
@@ -40,12 +48,13 @@ with timers('Quality control'):
         verbose=False)
 
 with timers('Doublet detection'):
-    data_query = data_query.find_doublets(batch_column='sample')        
+    data_query = data_query.find_doublets(batch_column='sample')
 
 with timers('Quality control'):
-    if subset:
-        data_query = data_query.filter_obs(
-            pl.col('doublet').not_() & pl.col('passed_QC'))
+    data_query = data_query.filter_obs(
+        pl.col('doublet').not_() & pl.col('passed_QC'))
+
+data_query = data_query.drop_obs('passed_QC')
     
 with timers('Feature selection'):
     data_ref, data_query = data_ref.hvg(data_query)
@@ -60,38 +69,27 @@ with timers('PCA'):
 with timers('Transfer labels'):
     data_ref, data_query = data_ref.harmonize(data_query)
     data_query = data_query.label_transfer_from(
-        data_ref, 'subclass')
+        data_ref, 'cell_type', cell_type_column='cell_type_transferred')
 
 with pl.Config(tbl_rows=-1):
     print('--- Transfer Accuracy ---')
-    print(data_query.obs\
-            .with_columns(
-                pl.col(["subclass", "cell_type"]).cast(pl.String))\
-            .group_by('subclass')\
-            .agg(
-                n_correct=(pl.col("cell_type") == pl.col("subclass")).sum(),
-                n_total=pl.len())\
-            .pipe(lambda df: pl.concat([
-                df,
-                df.sum().with_columns(subclass=pl.lit("Total"))]))\
-            .with_columns(
-                percent_correct=pl.col("n_correct") / pl.col("n_total") * 100)\
-            .sort(
-                pl.when(pl.col("subclass") == "Total").then(1).otherwise(0),
-                pl.col("subclass"))
-    )
+    print(transfer_accuracy(
+        data_query.obs, 'cell_type', 'cell_type_transferred'))
 
-timers.print_summary(sort=False)
+timers.print_summary(unit='s')
 
-df = timers.to_dataframe(sort=False, unit='s').with_columns(
-    pl.lit('brisc').alias('library'),
-    pl.lit('transfer').alias('test'),
-    pl.lit(size).alias('size'),
-    pl.lit(num_threads).alias('num_threads'),
-    pl.lit(subset).alias('subset'),
-)
-df.write_csv(output)
+timers_df = timers.to_dataframe(sort=False, unit='s')\
+    .with_columns(
+        pl.lit('brisc').alias('library'),
+        pl.lit('transfer').alias('test'),
+        pl.lit(DATASET_NAME).alias('dataset'),
+        pl.lit('single-threaded' if NUM_THREADS == 1 else 'multi-threaded')
+        .alias('num_threads'))
+timers_df.write_csv(OUTPUT_PATH)
 
-del data_query, data_ref, timers, df
+if not any(timers_df['aborted']):
+    print('--- Completed successfully ---')
+
+del timers, timers_df, data_query, data_ref
 gc.collect()
 

@@ -1,22 +1,23 @@
 suppressPackageStartupMessages({
   library(BPCells)
   library(Seurat)
+  library(ggplot2)
 })
 
 work_dir <- "sc-benchmarking"
 source(file.path(work_dir, "utils_local.R"))
 
-ARGS <- commandArgs(trailingOnly=TRUE)
-DATASET_NAME <- ARGS[1]
-DATA_PATH <- ARGS[2]
-OUTPUT_PATH <- ARGS[3]
+# ARGS <- commandArgs(trailingOnly=TRUE)
+# DATASET_NAME <- ARGS[1]
+# DATA_PATH <- ARGS[2]
+# OUTPUT_PATH <- ARGS[3]
 
 DATASET_NAME <- 'PBMC'
 DATA_PATH <- 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
-OUTPUT_PATH <- 'sc-benchmarking/output/test_de_brisc_PBMC_-1.csv'
+OUTPUT_PATH <- 'sc-benchmarking/output/test_basic_seurat_PBMC_200K.csv'
 
 system_info()
-timers <- MemoryTimer(silent = TRUE)
+timers <- MemoryTimer(silent = FALSE)
 
 scratch_dir <- "single-cell/BPCells-Scratch"
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "basic")
@@ -36,8 +37,13 @@ timers$with_timer("Load data", {
     mat = mat_disk,
     dir = file_path
   )
+})
+
+# custom obs reader required; not timed 
+obs_metadata <- read_h5ad_obs(DATA_PATH)
+
+timers$with_timer("Load data", {
   mat <- open_matrix_dir(dir = file_path)
-  obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
@@ -78,7 +84,7 @@ timers$with_timer("Embedding", {
 
 timers$with_timer("Plot embedding", {
   DimPlot(data, reduction = "umap", group.by = "cell_type")
-  ggsave(paste0(work_dir, "/figures/seurat_embedding.png"),
+  ggsave(paste0(work_dir, "/figures/seurat_embedding_", DATASET_NAME, ".png"),
         dpi = 300, units = "in", width = 10, height = 10)
 })
 
@@ -86,7 +92,7 @@ timers$with_timer("Find markers", {
   markers <- FindAllMarkers(data, group.by = "cell_type", only.pos = TRUE)
 })
 
-timers$print_summary(sort = FALSE)
+timers$print_summary(unit = "s")
 
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- "seurat"

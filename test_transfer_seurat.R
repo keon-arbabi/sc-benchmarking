@@ -4,13 +4,18 @@ suppressPackageStartupMessages({
   library(BPCells)
 })
 
-work_dir = "projects/sc-benchmarking"
-data_dir = "single-cell/SEAAD"
-source(file.path(work_dir, "utils_local.R"))
+source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
-size <- args[1]
-output <- args[2]
+# DATASET_NAME <- args[1]
+# DATA_PATH <- args[2]
+# REF_PATH <- args[3]
+# OUTPUT_PATH <- args[4]
+
+DATASET_NAME <- 'SEAAD'
+DATA_PATH <- 'single-cell/SEAAD/SEAAD_raw.h5ad'
+REF_PATH <- 'single-cell/SEAAD/SEAAD_ref.h5ad'
+OUTPUT_PATH <- 'sc-benchmarking/output/test_transfer_seurat_SEAAD.csv'
 
 scratch_dir <- Sys.getenv("SCRATCH")
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "transfer")
@@ -18,56 +23,46 @@ if (!dir.exists(bpcells_dir_test)) {
     dir.create(bpcells_dir_test, recursive = TRUE)
 }
 
-size_ref <- c("1M" = "600K", "400K" = "200K", "20K" = "10K")
-
 system_info()
-timers <- TimerMemoryCollection(silent = TRUE)
 
-# Not timed
-if (file.exists(file.path(bpcells_dir_test, size))) {
-  unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
+cat("--- Params ---\n")
+cat("seurat transfer\n")
+cat(sprintf("R.version=%s\n", R.version.string))
+cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
+
+timers <- MemoryTimer(silent = FALSE)
+
+# Not timed - cleanup existing directories
+query_dir <- file.path(bpcells_dir_test, "query")
+ref_dir <- file.path(bpcells_dir_test, "ref")
+if (file.exists(query_dir)) {
+  unlink(query_dir, recursive = TRUE)
 }
-if (file.exists(file.path(
-  bpcells_dir_test, paste0("ref_", size_ref[size])))) {
-  unlink(file.path(
-    bpcells_dir_test, paste0("ref_", size_ref[size])), recursive = TRUE)
+if (file.exists(ref_dir)) {
+  unlink(ref_dir, recursive = TRUE)
 }
 
-# Load data (query) ####
+# Load data (query) 
 timers$with_timer("Load data (query)", {
-  mat_disk <- open_matrix_anndata_hdf5(
-    path = paste0(data_dir, "/SEAAD_raw_", size,".h5ad"))
+  mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-  file_path <- file.path(bpcells_dir_test, size)
-  write_matrix_dir(
-    mat = mat_disk,
-    dir = file_path
-  )
-  mat <- open_matrix_dir(dir = file_path)
-  # Custom utility to read obs metadata from h5ad file
-  obs_metadata <- read_h5ad_obs(
-    file.path(data_dir, paste0("SEAAD_raw_", size,".h5ad")))
+  write_matrix_dir(mat = mat_disk, dir = query_dir)
+  mat <- open_matrix_dir(dir = query_dir)
+  obs_metadata <- read_h5ad_obs(DATA_PATH)
   data_query <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-# Load data (ref) ####
+# Load data (ref) 
 timers$with_timer("Load data (ref)", {
-  mat_disk <- open_matrix_anndata_hdf5(
-    path = file.path(data_dir, paste0("SEAAD_ref_", size_ref[size],".h5ad")))
+  mat_disk <- open_matrix_anndata_hdf5(path = REF_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-  file_path <- file.path(bpcells_dir_test, paste0("ref_", size_ref[size]))
-  write_matrix_dir(
-    mat = mat_disk,
-    dir = file_path
-  )
-  mat <- open_matrix_dir(dir = file_path)
-  # Custom utility to read obs metadata from h5ad file
-  obs_metadata <- read_h5ad_obs(
-    paste0(data_dir, "/SEAAD_ref_", size_ref[size],".h5ad"))
+  write_matrix_dir(mat = mat_disk, dir = ref_dir)
+  mat <- open_matrix_dir(dir = ref_dir)
+  obs_metadata <- read_h5ad_obs(REF_PATH)
   data_ref <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-# Quality control ####
+# Quality control 
 timers$with_timer("Quality control", {
   data_query[["percent.mt"]] <- PercentageFeatureSet(
     data_query, pattern = "^MT-")
@@ -101,45 +96,32 @@ timers$with_timer("Transfer labels", {
     reference = data_ref, query = data_query, dims = 1:30,
     reference.reduction = "pca")
   predictions <- TransferData(
-    anchorset = anchors, refdata = data_ref$subclass)
+    anchorset = anchors, refdata = data_ref$cell_type)
   data_query <- AddMetaData(
     object = data_query, metadata = predictions)
 })
 
-print("--- Transfer Accuracy ---")
-data_query$prediction.match <- data_query$predicted.id == data_query$subclass
-df = data_query@meta.data %>%
-  group_by(subclass) %>%
-  summarize(
-    n_correct = sum(prediction.match),
-    n_total = n()
-  ) %>%
-  ungroup() %>%
-  bind_rows(
-    summarize(
-      .,
-      subclass = "Total",
-      n_correct = sum(n_correct),
-      n_total = sum(n_total)
-    )
-  ) %>%
-  mutate(percent_correct = (n_correct / n_total) * 100)
-print(df, n = Inf)
+cat("--- Transfer Accuracy ---\n")
+accuracy_df <- transfer_accuracy(
+  data_query@meta.data, "cell_type", "predicted.id")
+print(accuracy_df, n = Inf)
 
-write.csv(df, file.path(work_dir, "output", paste0(
-  "test_transfer_seurat_bpcells_", size, "_accuracy.csv")), row.names = FALSE)
-
-timers$print_summary(sort = FALSE)
+timers$print_summary(unit = "s")
 
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- 'seurat'
 timers_df$test <- 'transfer'
-timers_df$size <- size
-write.csv(timers_df, output, row.names = FALSE)
+timers_df$dataset <- DATASET_NAME
+timers_df$num_threads <- 'single-threaded'
+write.csv(timers_df, OUTPUT_PATH, row.names = FALSE)
 
-unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
-unlink(file.path(bpcells_dir_test, paste0("ref_", size_ref[size])), recursive = TRUE)
+if (!any(timers_df$aborted)) {
+  cat("--- Completed successfully ---\n")
+}
+
+unlink(query_dir, recursive = TRUE)
+unlink(ref_dir, recursive = TRUE)
 
 rm(data_query, data_ref, anchors, predictions, timers, 
-  timers_df, df, mat, mat_disk, obs_metadata)
+  timers_df, accuracy_df, mat, mat_disk, obs_metadata)
 gc()
