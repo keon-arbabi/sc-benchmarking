@@ -7,14 +7,10 @@ suppressPackageStartupMessages({
 work_dir <- "sc-benchmarking"
 source(file.path(work_dir, "utils_local.R"))
 
-# ARGS <- commandArgs(trailingOnly=TRUE)
-# DATASET_NAME <- ARGS[1]
-# DATA_PATH <- ARGS[2]
-# OUTPUT_PATH <- ARGS[3]
-
-DATASET_NAME <- 'PBMC'
-DATA_PATH <- 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
-OUTPUT_PATH <- 'sc-benchmarking/output/test_basic_seurat_PBMC_200K.csv'
+ARGS <- commandArgs(trailingOnly=TRUE)
+DATASET_NAME <- ARGS[1]
+DATA_PATH <- ARGS[2]
+OUTPUT_PATH_TIME <- ARGS[3]
 
 system_info()
 timers <- MemoryTimer(silent = FALSE)
@@ -39,11 +35,10 @@ timers$with_timer("Load data", {
   )
 })
 
-# custom obs reader required; not timed 
-obs_metadata <- read_h5ad_obs(DATA_PATH)
-
 timers$with_timer("Load data", {
   mat <- open_matrix_dir(dir = file_path)
+  # custom reader required 
+  obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
@@ -99,7 +94,7 @@ timers_df$library <- "seurat"
 timers_df$test <- "basic"
 timers_df$dataset <- DATASET_NAME
 
-write.csv(timers_df, OUTPUT_PATH, row.names = FALSE)
+write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
 unlink(bpcells_dir_test, recursive = TRUE)
 rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata)

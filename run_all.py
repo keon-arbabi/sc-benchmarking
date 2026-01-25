@@ -10,14 +10,8 @@ LOG_DIR = os.path.join(WORK_DIR, 'logs')
 FIGURES_DIR = os.path.join(WORK_DIR, 'figures')
 
 DATASETS = {
-    'PBMC': {
-        'data': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
-        'ref': os.path.join(DATA_DIR, 'PBMC', 'ScaleBio_PBMC_reference.h5ad'),
-    },
-    'SEAAD': {
-        'data': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
-        'ref': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_ref.h5ad'),
-    },
+    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
 }
 
 SCRIPTS = [
@@ -44,14 +38,17 @@ def main():
         interpreter = (rscript_path if ext == '.R' else python_path)
         script_path = os.path.join(WORK_DIR, script_file)
 
-        for d_name, d_paths in DATASETS.items():
+        for d_name, d_path in DATASETS.items():
             param_sets = [(-1,), (1,)] if 'brisc' in name else [()]
 
             for params_tuple in param_sets:
                 params_str = [str(p) for p in params_tuple]
                 job_name_parts = [name, d_name] + params_str
                 job_name = '_'.join(job_name_parts)
-                output = os.path.join(OUTPUT_DIR, f'{job_name}.csv')
+                output_timings = os.path.join(
+                    OUTPUT_DIR, f'{job_name}_timer.csv')
+                output_accuracy = os.path.join(
+                    OUTPUT_DIR, f'{job_name}_accuracy.csv')
                 log = os.path.join(LOG_DIR, f'{job_name}.log')
 
                 if os.path.exists(log):
@@ -60,15 +57,11 @@ def main():
                             print(f'Skipping completed job: {job_name}')
                             continue
 
-                cmd = [interpreter, script_path, d_name]
-
-                if 'transfer' in name:
-                    cmd.extend([d_paths['data'], d_paths['ref']])
-                else:
-                    cmd.append(d_paths['data'])
-
+                cmd = [interpreter, script_path, d_name, d_path]
                 cmd.extend([str(p) for p in params_tuple])
-                cmd.append(output)
+                cmd.append(output_timings)
+                if 'transfer' in name:
+                    cmd.append(output_accuracy)
 
                 pythonpath = f'{os.getcwd()}:$PYTHONPATH'
                 full_cmd = (

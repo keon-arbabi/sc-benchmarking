@@ -4,42 +4,41 @@ suppressPackageStartupMessages({
   library(BPCells)
 })  
 
-work_dir = "sc-benchmarking"
-data_dir = "single-cell/SEAAD"
-source(file.path(work_dir, "utils_local.R"))
+source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
-size <- args[1]
-output <- args[2]
+DATASET_NAME <- args[1]
+DATA_PATH <- args[2]
+OUTPUT_PATH_TIME <- args[3]
 
-system_info()
-timers = TimerMemoryCollection(silent = TRUE)
-
-scratch_dir <- "projects/def-wainberg/single-cell/BPCells-Scratch"
+scratch_dir <- Sys.getenv("SCRATCH")
 bpcells_dir_test <- file.path(scratch_dir, "bpcells", "de")
 if (!dir.exists(bpcells_dir_test)) {
   dir.create(bpcells_dir_test, recursive = TRUE)
 }
 
-if (file.exists(file.path(bpcells_dir_test, size))) {
-  unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
+system_info()
+
+cat("--- Params ---\n")
+cat("seurat de\n")
+cat(sprintf("R.version=%s\n", R.version.string))
+cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
+
+timers <- MemoryTimer(silent = FALSE)
+
+bpcells_dir <- file.path(bpcells_dir_test, "data")
+if (file.exists(bpcells_dir)) {
+  unlink(bpcells_dir, recursive = TRUE)
 }
 
 timers$with_timer("Load data", {
-    mat_disk <- open_matrix_anndata_hdf5(
-      path = file.path(data_dir, paste0("SEAAD_raw_", size,".h5ad")))
-    mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-    file_path <- file.path(bpcells_dir_test, size)
-    write_matrix_dir(
-      mat = mat_disk,
-      dir = file_path
-    )
-    mat <- open_matrix_dir(dir = file_path)
-    # Custom utility to read obs metadata from h5ad file
-    obs_metadata <- read_h5ad_obs(
-      file.path(data_dir, paste0("SEAAD_raw_", size,".h5ad")))
-    data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
-  })
+  mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
+  mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
+  write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
+  mat <- open_matrix_dir(dir = bpcells_dir)
+  obs_metadata <- read_h5ad_obs(DATA_PATH)
+  data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
+})
 
 timers$with_timer("Quality control", {
   data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
@@ -73,37 +72,18 @@ timers$with_timer("Differential expression", {
   de <- do.call(rbind, de_list)
 })
 
-timers$print_summary(sort = FALSE)
+timers$print_summary(unit = "s")
+
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- "seurat"
 timers_df$test <- "de"
-timers_df$size <- size
+timers_df$dataset <- DATASET_NAME
+write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
-write.csv(timers_df, output, row.names = FALSE)
+if (!any(timers_df$aborted)) {
+  cat("--- Completed successfully ---\n")
+}
 
-unlink(file.path(bpcells_dir_test, size), recursive = TRUE)
+unlink(bpcells_dir, recursive = TRUE)
 rm(data, de, de_list, timers, timers_df, mat, mat_disk, obs_metadata)
 gc()
-
-
-# # Normalization ####
-# timers$with_timer("Normalization", {
-#   data <- NormalizeData(
-#     data, normalization.method = "LogNormalize", scale.factor = 10000)
-# })
-
-# # Differential expression ####
-# timers$with_timer("Differential expression (wilcoxon)", {
-#   data$group <- paste(data$subclass, data$ad_dx, sep = "_")
-#   Idents(data) <- "group"
-
-#   de_list <- list()
-#   for (subclass in unique(data$subclass)) {
-#     de_list[[subclass]] <- FindMarkers(
-#       data, 
-#       ident.1 = paste(subclass, "AD", sep = "_"), 
-#       ident.2 = paste(subclass, "Control", sep = "_")
-#     )
-#   }
-#   de <- do.call(rbind, de_list)
-# })

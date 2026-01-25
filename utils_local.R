@@ -330,11 +330,12 @@ system_info <- function() {
     })
   }
   
-  cat('\n--- User Resource Allocation ---\n')
-  cat(sprintf('Node: %s\n', hostname))
-  cat(sprintf('User: %s\n', user))
-  cat(sprintf('CPU Cores Allocated: %s\n', cpu_cores))
-  cat(sprintf('Memory Allocated: %s\n', mem_gb_str))
+  cat("\n--- User Resource Allocation ---\n")
+  cat(sprintf("Node: %s\n", hostname))
+  cat(sprintf("User: %s\n", user))
+  cat(sprintf("CPU Cores Allocated: %s\n", cpu_cores))
+  cat(sprintf("Memory Allocated: %s\n", mem_gb_str))
+  cat(sprintf("R.version=%s\n", R.version.string))
 }
 
 read_h5ad_obs <- function(path) {
@@ -413,4 +414,6 @@ transfer_accuracy <- function(obs_df, orig_col, trans_col) {
         n_total = sum(n_total))) %>%
     mutate(percent_correct = (n_correct / n_total) * 100) %>%
     rename(cell_type = orig)
+  print(accuracy_df, n = Inf)
+  return(accuracy_df)
 }

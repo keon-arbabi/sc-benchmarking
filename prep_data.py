@@ -117,50 +117,6 @@ sc.subsample_obs(n=50000, by_column='cell_type', QC_column=None)\
 
 del sc; gc.collect()
 
-# Prep SEAAD reference data
-
-sc = SingleCell(file_ref_data)\
-    .tocsr()\
-    .rename_obs({
-        'sample_name': 'cell_id', 
-        'external_donor_name_label': 'sample', 
-        'subclass_label': 'cell_type'})\
-    .set_obs_names('cell_id')\
-    .select_obs('sample', 'cell_type')\
-    .rename_var({'_index': 'gene_symbol'})\
-    .drop_obsm([
-        'X_scVI', 'X_umap', '_scvi_extra_categoricals',
-        '_scvi_extra_continuous'])\
-    .drop_obsp([
-        'connectivities', 'distances'])\
-    .drop_uns([
-        '_scvi', 'cluster_label_colors', 'neighbors', 
-        'subclass_label_colors', 'umap'])\
-    .with_uns(QCed = True)
-
-print(sc)
-print(sc.peek_obs())
-print(sc.peek_var())
-
-'''
-SingleCell dataset with 137,303 cells (obs), 36,601 genes (var), 
-and 782,484,725 non-zero entries (X)
-    obs: cell_id, sample, cell_type
-    var: gene_symbol
-    uns: normalized, QCed
-
-column     value                           
- cell_id    AAACCCACAACTCATG-LKTX_191204_0… 
- sample     H18.30.002                      
- cell_type  Pax6     
-
-column       value       
- gene_symbol  MIR1302-2HG 
-'''
-
-sc.save(f'{dir_data}/SEAAD_ref.h5ad', overwrite=True)
-del sc; gc.collect()
-
 # endregion
 
 # region Parse 10M PBMC
@@ -180,38 +136,12 @@ if not os.path.exists(file_ref_data):
     run(f'wget https://datasets.cellxgene.cziscience.com/'
         f'428b51a9-6ea7-4c5b-a80a-e0ae77f2a4da.h5ad -O {file_ref_data}')
 
-# Prep Parse PBMC data 
-
-gold_map = {
-    'B Naive': 'B naive',
-    'B Intermediate/Memory': 'B intermediate',
-    'CD4 Naive': 'CD4 Naive',
-    'CD4 Memory': 'CD4 Memory',
-    'CD8 Naive': 'CD8 Naive',
-    'CD8 Memory': 'CD8 Memory',
-    'CD14 Mono': 'CD14 Mono',
-    'CD16 Mono': 'CD16 Mono',
-    'cDC': 'cDC',
-    'NK': 'NK',
-    'NK CD56bright': 'NK_CD56bright',
-    'NKT': 'CD8 Memory', # Reference lacks NKT; transcriptionally closest to CD8 TEM
-    'Treg': 'Treg',
-    'MAIT': 'MAIT',
-    'HSPC': 'HSPC',
-    'pDC': 'pDC',
-    'Plasmablast': 'Plasmablast',
-    'ILC': 'ILC',
-    'Platelet': 'Platelet'
-}
-
 sc = SingleCell(file_data)\
     .rename_obs({'_index': 'cell_id', 'treatment': 'cond'})\
     .select_obs('sample', 'donor', 'cytokine', 'cond', 'cell_type')\
     .with_columns_obs(
         pl.col('cytokine').cast(pl.String)
-            .str.replace_all('-', '_').alias('cytokine'),
-        pl.col('cell_type').cast(pl.String)
-            .replace_strict(gold_map).alias('cell_type_gold'))\
+            .str.replace_all('-', '_').alias('cytokine'))\
     .rename_var({'_index': 'gene_symbol'})\
     .drop_var('n_cells')\
     .qc_metrics(
@@ -229,64 +159,5 @@ sc.subsample_obs(n=200000, by_column='cell_type', QC_column=None)\
 
 del sc; gc.collect()
 
-# Prep ScaleBio PBMC reference data 
-
-ref_map = {
-    'B naive': 'B naive',
-    'CD4 Naive': 'CD4 Naive',
-    'CD8 Naive': 'CD8 Naive',
-    'CD14 Mono': 'CD14 Mono',
-    'CD16 Mono': 'CD16 Mono',
-    'NK': 'NK',
-    'NK_CD56bright': 'NK_CD56bright',
-    'Treg': 'Treg',
-    'MAIT': 'MAIT',
-    'HSPC': 'HSPC',
-    'pDC': 'pDC',
-    'Plasmablast': 'Plasmablast',
-    'ILC': 'ILC',
-    'Platelet': 'Platelet',
-    
-    # Coarsening / Merging labels
-    'B intermediate': 'B intermediate',
-    'B memory': 'B intermediate',
-    'CD4 TCM': 'CD4 Memory',
-    'CD4 TEM': 'CD4 Memory',
-    'CD4 Proliferating': 'CD4 Memory',
-    'CD8 TCM': 'CD8 Memory',
-    'CD8 TEM': 'CD8 Memory',
-    'cDC1': 'cDC',
-    'cDC2': 'cDC',
-    
-    # Orphan / Rare label handling
-    'dnT': 'CD4 Memory',          
-    'gdT': 'CD8 Memory',          
-    'NK Proliferating': 'NK_CD56bright' 
-}
-
-sc = SingleCell(file_ref_data)\
-    .drop_obs('cell_type')\
-    .rename_obs({
-        'cell_barcode': 'cell_id', 'celltype_level_2': 'cell_type',
-        'donor_id': 'sample'})\
-    .select_obs('sample', 'cell_type')\
-    .with_columns_obs(
-        pl.col('cell_type').cast(pl.String)
-            .replace_strict(ref_map).alias('cell_type'))\
-    .rename_var({'feature_name': 'gene_symbol'})\
-    .set_var_names('gene_symbol')\
-    .make_var_names_unique(separator='~')\
-    .drop_var([
-        '_index', 'feature_is_filtered', 'feature_reference',
-        'feature_biotype', 'feature_length', 'feature_type'])\
-    .with_uns(QCed = True)\
-    .select_uns('normalized', 'QCed')\
-    .drop_obsm('X_umap')
-
-print(sc)
-print(sc.peek_obs())
-
-sc.save(f'{dir_data}/ScaleBio_PBMC_ref.h5ad', overwrite=True)
-del sc; gc.collect()
 
 

@@ -247,7 +247,7 @@ def system_info():
     print(f'User: {user}')
     print(f'CPU Cores Allocated: {cpu_cores}')
     print(f'Memory Allocated: {mem_gb}')
-    print(f'{sys.version=}')
+    print(f'Python Version: {sys.version}')
 
 def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0'):
     from tempfile import NamedTemporaryFile
@@ -298,24 +298,27 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0'):
             pass
 
 def transfer_accuracy(obs, orig_col, trans_col):
-    print_df(obs
+    if isinstance(obs, pd.DataFrame):
+        obs = pl.from_pandas(obs)
+    df = obs\
         .with_columns(
-            pl.col([orig_col, trans_col]).cast(pl.String))
-        .group_by(orig_col)
+            pl.col([orig_col, trans_col]).cast(pl.String))\
+        .group_by(orig_col)\
         .agg(
             n_correct=pl.col(orig_col).eq(pl.col(trans_col)).sum(),
-            n_total=pl.len())
+            n_total=pl.len())\
         .pipe(lambda df: pl.concat([
             df, 
-            df.sum().with_columns(pl.lit('Total').alias(orig_col))]))
+            df.sum().with_columns(pl.lit('Total').alias(orig_col))]))\
         .with_columns(
-            percent_correct=pl.col('n_correct') / pl.col('n_total') * 100)
+            percent_correct=pl.col('n_correct') / pl.col('n_total') * 100)\
         .sort(
             pl.when(pl.col(orig_col) == 'Total').then(1).otherwise(0),
-            pl.col(orig_col))
-        .sort('percent_correct', descending=True)
+            pl.col(orig_col))\
+        .sort('cell_type')\
         .rename({orig_col: 'cell_type'})
-    )
+    print_df(df)
+    return df
 
 def confusion_matrix_plot(sc_obs, orig_col, trans_col, filename):
     cm = pd.crosstab(

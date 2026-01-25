@@ -8,7 +8,7 @@ from utils_local import MemoryTimer, system_info
 
 DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
-OUTPUT_PATH = sys.argv[3]
+OUTPUT_PATH_TIME = sys.argv[3]
 
 system_info()
 
@@ -75,7 +75,7 @@ timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('scanpy').alias('library'),
     pl.lit('basic').alias('test'),
     pl.lit(DATASET_NAME).alias('dataset'),)
-timers_df.write_csv(OUTPUT_PATH)
+timers_df.write_csv(OUTPUT_PATH_TIME)
 
 if not any(timers_df['aborted']):
     print('--- Completed successfully ---')

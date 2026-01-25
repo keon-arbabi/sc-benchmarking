@@ -1,4 +1,3 @@
-import os 
 import gc
 import sys
 import polars as pl  
@@ -7,25 +6,15 @@ from single_cell import SingleCell
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-os.environ['R_HOME'] = os.path.expanduser('~/miniforge3/lib/R')
-from ryp import r
-r('.libPaths(c(file.path(Sys.getenv("CONDA_PREFIX"), "lib/R/library")))')
-
 # DATASET_NAME = sys.argv[1]
 # DATA_PATH = sys.argv[2]
 # NUM_THREADS = int(sys.argv[3])
-# OUTPUT_PATH = sys.argv[4]
+# OUTPUT_PATH_TIME = sys.argv[4]
 
 DATASET_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw_200K.h5ad'
 NUM_THREADS = -1
-OUTPUT_PATH_1= 'sc-benchmarking/output/test_de_brisc_PBMC_-1_timers.csv'
-OUTPUT_PATH_2= 'sc-benchmarking/output/test_de_brisc_PBMC_-1_table.csv'
-
-DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
-NUM_THREADS = -1
-OUTPUT_PATH = 'sc-benchmarking/output/test_de_brisc_SEAAD_-1.csv'
+OUTPUT_PATH_TIME = 'sc-benchmarking/output/test_de_brisc_PBMC_200K_-1_timer.csv'
 
 system_info()
 
@@ -59,7 +48,9 @@ with timers('Data transformation (pseudobulk / normalization)'):
 del data_sc; gc.collect()
 
 with timers('Data transformation (pseudobulk / normalization)'):
-    data_pb = data_pb.qc('cond', verbose=False)
+    data_pb = data_pb\
+        .filter_obs(pl.col('cytokine').is_in(['IFN_gamma', 'PBS']))\
+        .qc('cytokine', verbose=False)
 
 with timers('Differential expression'):
     if DATASET_NAME == 'SEAAD':
@@ -81,9 +72,7 @@ with timers('Differential expression'):
                 contrasts=contrasts,
                 group='cytokine',
                 categorical_columns=['donor', 'cytokine'],
-                verbose=True)
-
-de.table.write_csv(OUTPUT_PATH_2)                
+                verbose=False)
 
 timers.print_summary(unit='s')
 
@@ -94,7 +83,7 @@ timers_df = timers.to_dataframe(sort=False, unit='s')\
         pl.lit(DATASET_NAME).alias('dataset'),
         pl.lit('single-threaded' if NUM_THREADS == 1 else 'multi-threaded')
         .alias('num_threads'))
-timers_df.write_csv(OUTPUT_PATH)
+timers_df.write_csv(OUTPUT_PATH_TIME)
 
 if not any(timers_df['aborted']):
     print('--- Completed successfully ---')

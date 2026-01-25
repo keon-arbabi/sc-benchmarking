@@ -5,17 +5,9 @@ import scanpy as sc
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-# DATASET_NAME = sys.argv[1]
-# DATA_PATH = sys.argv[2]
-# OUTPUT_PATH = sys.argv[3]
-
-DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
-OUTPUT_PATH = 'sc-benchmarking/output/test_de_scanpy_SEAAD.csv'
-
-DATASET_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
-OUTPUT_PATH = 'sc-benchmarking/output/test_de_scanpy_PBMC.csv'
+DATASET_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH_TIME = sys.argv[3]
 
 system_info()
 
@@ -87,7 +79,7 @@ timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
     pl.lit('scanpy').alias('library'),
     pl.lit('de').alias('test'),
     pl.lit(DATASET_NAME).alias('dataset'),)
-timers_df.write_csv(OUTPUT_PATH)
+timers_df.write_csv(OUTPUT_PATH_TIME)
 
 if not any(timers_df['aborted']):
     print('--- Completed successfully ---')
