@@ -104,6 +104,6 @@ if (!any(timers_df$aborted)) {
 
 unlink(query_dir, recursive = TRUE)
 
-rm(data_query, data_ref, anchors, predictions, timers, 
+rm(data_query, data_ref, anchors, predictions, timers,
   timers_df, accuracy_df, mat, mat_disk, obs_metadata)
 gc()

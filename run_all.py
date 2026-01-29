@@ -10,23 +10,24 @@ LOG_DIR = os.path.join(WORK_DIR, 'logs')
 FIGURES_DIR = os.path.join(WORK_DIR, 'figures')
 
 DATASETS = {
-    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
-    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
+    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw_50K.h5ad'),
+    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw_200K.h5ad'),
 }
 
 SCRIPTS = [
     'test_basic_brisc.py',
     'test_basic_scanpy.py',
     'test_basic_seurat.R',
-    # 'test_de_brisc.py',
-    # 'test_de_scanpy.py',
-    # 'test_de_seurat.R',
-    # 'test_transfer_brisc.py',
-    # 'test_transfer_scanpy.py',
-    # 'test_transfer_seurat.R',
+    'test_de_brisc.py',
+    'test_de_scanpy.py',
+    'test_de_seurat.R',
+    'test_transfer_brisc.py',
+    'test_transfer_scanpy.py',
+    'test_transfer_seurat.R',
 ]
 
-def main():
+if __name__ == '__main__':
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -71,6 +72,3 @@ def main():
                     full_cmd, job_name=job_name, log_file=log,
                     CPUs=192,
                     hours=12 if ext == '.R' else 6)
-
-if __name__ == '__main__':
-    main()

@@ -59,23 +59,23 @@ class MemoryTimer:
                         data = np.loadtxt(io.StringIO(output), delimiter=',')
                 except (ValueError, UserWarning):
                      # Empty output default
-                    data = np.array([[0.0, 0.0]]) 
-                
+                    data = np.array([[0.0, 0.0]])
+
                 if data.size == 0:
                     data = np.array([[0.0, 0.0]])
                 elif data.ndim == 1:
                     data = data[None, :]
-                    
+
                 max_mem = np.max(data, axis=0)
                 memory_gb = np.round(max_mem[0] / 1024 / 1024, 2)
                 percent_mem = np.round(max_mem[1], 2)
-                
+
                 if not self.silent:
                     status = 'aborted after' if aborted else 'took'
                     time_str = self._format_time(duration)
                     print(f'{message} {status} {time_str} using '
                           f'{memory_gb} GiB\n')
-                
+
                 # Update or create timing entry
                 if message in self.timings:
                     self.timings[message]['duration'] += duration
@@ -96,7 +96,7 @@ class MemoryTimer:
                         'aborted': aborted,
                     }
                 gc.collect()
-                
+
         return timer()
 
     def print_summary(self, sort=False, unit=None):
@@ -104,14 +104,14 @@ class MemoryTimer:
         items = (sorted(self.timings.items(),
                         key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
-        
-        total_time = sum(info['duration'] for _, info in items)        
+
+        total_time = sum(info['duration'] for _, info in items)
         table_data = []
         duration_header = f'Duration ({unit})' if unit else 'Duration'
         headers = [
-            'Operation', 'Status', duration_header, 
+            'Operation', 'Status', duration_header,
             '% of Total', 'Memory (GiB)', '% of Avail']
-        
+
         for message, info in items:
             duration = info['duration']
             memory = info['memory']
@@ -126,7 +126,7 @@ class MemoryTimer:
                 f'{memory}',
                 f'{info["%mem"]:.2f}%'
             ])
-        
+
         print(tabulate(table_data, headers=headers, tablefmt='simple'))
         print(f'\nTotal time: {self._format_time(total_time, unit)}')
 
@@ -139,12 +139,12 @@ class MemoryTimer:
             if unit not in conversions:
                 raise ValueError(f'Unsupported unit: {unit}')
             return f'{duration * conversions[unit]:.2f}{unit}'
-        
+
         units = [
             (86400, 'd'), (3600, 'h'), (60, 'm'), (1, 's'),
             (0.001, 'ms'), (1e-6, 'µs'), (1e-9, 'ns')
         ]
-        
+
         parts = []
         for threshold, suffix in units:
             if duration >= threshold or (not parts and suffix == 'ns'):
@@ -157,7 +157,7 @@ class MemoryTimer:
                     parts.append(f'{value}{suffix}')
                 if len(parts) == 2:
                     break
-        
+
         return ' '.join(parts) if parts else 'less than 1ns'
 
     def to_dataframe(self, sort=True, unit=None):
@@ -167,13 +167,13 @@ class MemoryTimer:
                 'aborted': [], 'percentage': [], 'memory': [],
                 'memory_unit': [], 'percent_mem': []
             })
-        
+
         items = (sorted(self.timings.items(),
                         key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
-        
+
         total = sum(info['duration'] for info in self.timings.values())
-        
+
         conv = 1.0
         if unit:
             conversions = {
@@ -183,10 +183,10 @@ class MemoryTimer:
             if unit not in conversions:
                 raise ValueError(f'Unsupported unit: {unit}')
             conv = conversions[unit]
-        
+
         ops, durs, aborts, pcts = [], [], [], []
         memory, memory_unit, percent_mem = [], [], []
-        
+
         for msg, info in items:
             ops.append(msg)
             durs.append(info['duration'] * conv if unit else info['duration'])
@@ -195,7 +195,7 @@ class MemoryTimer:
             memory.append(info['memory'])
             memory_unit.append('GiB')
             percent_mem.append(info['%mem'])
-        
+
         return pl.DataFrame({
             'operation': ops,
             'duration': durs,
@@ -214,9 +214,7 @@ def print_df(df, num_rows=-1, num_columns=-1):
 def system_info():
     hostname = socket.gethostname()
     user = os.environ.get('USER', 'N/A')
-    
-    # Get CPU cores
-    cpu_cores = (os.environ.get('SLURM_CPUS_PER_TASK') or 
+    cpu_cores = (os.environ.get('SLURM_CPUS_PER_TASK') or
                  os.environ.get('SLURM_CPUS_ON_NODE'))
     if not cpu_cores:
         try:
@@ -224,14 +222,11 @@ def system_info():
         except NotImplementedError:
             cpu_cores = 'N/A'
 
-    # Get Memory
     mem_gb = 'N/A'
     try:
-        # First, try SLURM environment variable
         mem_mb = int(os.environ['SLURM_MEM_PER_NODE'])
         mem_gb = f'{mem_mb / 1024:.1f} GB'
     except (KeyError, ValueError):
-        # As a fallback, read from /proc/meminfo
         try:
             with open('/proc/meminfo', 'r') as f:
                 for line in f:
@@ -240,7 +235,7 @@ def system_info():
                         mem_gb = f'{mem_kb / 1024 / 1024:.1f} GB'
                         break
         except FileNotFoundError:
-            pass 
+            pass
 
     print(f'\n--- User Resource Allocation ---')
     print(f'Node: {hostname}')
@@ -249,29 +244,31 @@ def system_info():
     print(f'Memory Allocated: {mem_gb}')
     print(f'Python Version: {sys.version}')
 
-def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0'):
+def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
+              account='def-wainberg'):
     from tempfile import NamedTemporaryFile
-    
+
     cluster = os.environ.get('CLUSTER')
     runtime = f'{hours}:00:00'
     job_name = job_name.replace(' ', '_')
-    
+
     try:
         with NamedTemporaryFile(
                 'w', dir=os.environ.get('SCRATCH', '.'),
                 suffix='.sh', delete=False) as temp_file:
-            
+
             partition = ''
             if cluster in ('trillium', 'niagara'):
                 partition = '#SBATCH -p compute\n'
-            
+
             memory_line = ''
             if memory != '0':
                 memory_line = f'#SBATCH --mem {memory}\n'
-            
+
             print(
                 f'#!/bin/bash\n'
                 f'{partition}'
+                f'#SBATCH -A {account}\n'
                 f'#SBATCH -N 1\n'
                 f'#SBATCH -n {CPUs}\n'
                 f'{memory_line}'
@@ -280,13 +277,13 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0'):
                 f'#SBATCH -o {log_file}\n'
                 f'set -euo pipefail; {command}\n',
                 file=temp_file)
-        
-        sbatch = ('.sbatch' if cluster in ('trillium', 'niagara') 
+
+        sbatch = ('.sbatch' if cluster in ('trillium', 'niagara')
                   else 'sbatch')
         result = subprocess.run(
             [sbatch, temp_file.name],
             capture_output=True, text=True)
-        
+
         if result.returncode != 0:
             print(f'Error submitting job {job_name}: {result.stderr}')
         else:
@@ -308,14 +305,13 @@ def transfer_accuracy(obs, orig_col, trans_col):
             n_correct=pl.col(orig_col).eq(pl.col(trans_col)).sum(),
             n_total=pl.len())\
         .pipe(lambda df: pl.concat([
-            df, 
+            df,
             df.sum().with_columns(pl.lit('Total').alias(orig_col))]))\
         .with_columns(
             percent_correct=pl.col('n_correct') / pl.col('n_total') * 100)\
         .sort(
             pl.when(pl.col(orig_col) == 'Total').then(1).otherwise(0),
             pl.col(orig_col))\
-        .sort('cell_type')\
         .rename({orig_col: 'cell_type'})
     print_df(df)
     return df
@@ -327,23 +323,23 @@ def confusion_matrix_plot(sc_obs, orig_col, trans_col, filename):
     )
     with pd.option_context('display.max_columns', None):
         print(cm)
-    
+
     norm_cm = cm.div(cm.sum(axis=1), axis=0).fillna(0)
-    
+
     height = 6 + norm_cm.shape[0] * 0.05
     width = 8 + norm_cm.shape[1] * 0.05
-    
+
     plt.figure(figsize=(width, height))
     ax = sns.heatmap(
         norm_cm, square=False, linewidths=0.5,
         cmap='rocket_r', vmin=0, vmax=1,
         cbar_kws={'shrink': 0.7}
     )
-    
+
     cbar = ax.collections[0].colorbar
     cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1])
     cbar.set_ticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
-    
+
     plt.xticks(rotation=90)
     plt.yticks(rotation=0)
     ax.set_xlabel(f'Predicted: {trans_col}')

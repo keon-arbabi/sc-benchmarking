@@ -37,7 +37,7 @@ timers$with_timer("Load data", {
 
 timers$with_timer("Load data", {
   mat <- open_matrix_dir(dir = file_path)
-  # custom reader required 
+  # custom reader required
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
@@ -54,7 +54,7 @@ timers$with_timer("Normalization", {
 
 timers$with_timer("Feature selection", {
   data <- FindVariableFeatures(
-    data, selection.method = "vst", nfeatures = 2000)  
+    data, selection.method = "vst", nfeatures = 2000)
 })
 
 timers$with_timer("PCA", {

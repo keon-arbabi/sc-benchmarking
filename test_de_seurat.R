@@ -2,7 +2,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(Seurat)
   library(BPCells)
-})  
+})
 
 source("sc-benchmarking/utils_local.R")
 
@@ -18,7 +18,6 @@ if (!dir.exists(bpcells_dir_test)) {
 }
 
 system_info()
-
 cat("--- Params ---\n")
 cat("seurat de\n")
 cat(sprintf("R.version=%s\n", R.version.string))
@@ -45,32 +44,62 @@ timers$with_timer("Quality control", {
   data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
 })
 
-data$ad_dx <- ifelse(data$ad_dx == "1", "AD", "Control")
+if (DATASET_NAME == "SEAAD") {
+  data$cond <- ifelse(data$cond == 1, "AD", "Control")
 
-timers$with_timer("Data transformation (pseudobulk / normalization)", {
-  data <- AggregateExpression(
-    data, 
-    assays = "RNA", 
-    return.seurat = TRUE, 
-    group.by = c("ad_dx", "sample", "subclass")
-  )
-})
-
-timers$with_timer("Differential expression", {
-  data$group <- paste(data$subclass, data$ad_dx, sep = "_")
-  Idents(data) <- "group"
-
-  de_list <- list()
-  for (subclass in unique(data$subclass)) {
-    de_list[[subclass]] <- FindMarkers(
-      data, 
-      ident.1 = paste(subclass, "AD", sep = "_"), 
-      ident.2 = paste(subclass, "Control", sep = "_"), 
-      test.use = "DESeq2"
+  timers$with_timer("Data transformation", {
+    data <- AggregateExpression(
+      data,
+      assays = "RNA",
+      return.seurat = TRUE,
+      group.by = c("cond", "sample", "cell_type")
     )
-  }
-  de <- do.call(rbind, de_list)
-})
+  })
+
+  timers$with_timer("Differential expression", {
+    data$group <- paste(data$cell_type, data$cond, sep = "_")
+    Idents(data) <- "group"
+
+    de_list <- list()
+    for (ct in unique(data$cell_type)) {
+      de_list[[ct]] <- FindMarkers(
+        data,
+        ident.1 = paste(ct, "AD", sep = "_"),
+        ident.2 = paste(ct, "Control", sep = "_"),
+        test.use = "DESeq2"
+      )
+    }
+    de <- do.call(rbind, de_list)
+  })
+
+} else if (DATASET_NAME == "PBMC") {
+  data <- subset(data, subset = cytokine %in% c("IFN_gamma", "PBS"))
+
+  timers$with_timer("Data transformation", {
+    data <- AggregateExpression(
+      data,
+      assays = "RNA",
+      return.seurat = TRUE,
+      group.by = c("cytokine", "sample", "cell_type")
+    )
+  })
+
+  timers$with_timer("Differential expression", {
+    data$group <- paste(data$cell_type, data$cytokine, sep = "_")
+    Idents(data) <- "group"
+
+    de_list <- list()
+    for (ct in unique(data$cell_type)) {
+      de_list[[ct]] <- FindMarkers(
+        data,
+        ident.1 = paste(ct, "IFN_gamma", sep = "_"),
+        ident.2 = paste(ct, "PBS", sep = "_"),
+        test.use = "DESeq2"
+      )
+    }
+    de <- do.call(rbind, de_list)
+  })
+}
 
 timers$print_summary(unit = "s")
 

@@ -397,7 +397,7 @@ read_h5ad_obs <- function(path) {
 }
 
 transfer_accuracy <- function(obs_df, orig_col, trans_col) {
-  obs_df %>%
+  accuracy_df <- obs_df %>%
     mutate(
       orig = as.character(.data[[orig_col]]),
       trans = as.character(.data[[trans_col]])) %>%
