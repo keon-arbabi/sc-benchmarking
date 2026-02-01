@@ -1,9 +1,12 @@
 import gc
 import sys
+import warnings
 import polars as pl
 import scanpy as sc
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
+
+warnings.filterwarnings("ignore")
 
 DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
@@ -64,14 +67,14 @@ if __name__ == '__main__':
                 sc.tl.rank_genes_groups(
                     adata_sub,
                     groupby='cytokine',
-                    groups=['IFN_gamma'],
+                    groups=['IFN-gamma'],
                     reference='PBS',
                     method='wilcoxon',
                     key_added=f'de_{cell_type}'
                 )
                 de[cell_type] = sc.get.rank_genes_groups_df(
                     adata_sub,
-                    group='IFN_gamma',
+                    group='IFN-gamma',
                     key=f'de_{cell_type}'
                 )
 

@@ -1,10 +1,10 @@
 import os
 import gc
 import polars as pl
-from utils import run 
+from utils import run
 from single_cell import SingleCell
 
-# region SEAAD 
+# region SEAAD
 # https://doi.org/10.21203/rs.3.rs-2921860/v1
 # https://sea-ad-single-cell-profiling.s3.amazonaws.com/index.html
 
@@ -27,10 +27,10 @@ if not os.path.exists(file_metadata):
         f'sea-ad_cohort_donor_metadata_072524.xlsx '
         f'-O {file_metadata}')
 if not os.path.exists(file_ref_data):
-    run(f'wget https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/' 
+    run(f'wget https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/'
         f'RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad '
         f'-O {file_ref_data}')
-    
+
 donor_metadata = pl.read_excel(file_metadata)
 cols = ['sample',  'cell_type', 'cp_score', 'cond', 'apoe4_dosage',
         'pmi', 'age_at_death', 'sex']
@@ -61,7 +61,7 @@ sc = sc\
             .cast(pl.Float64)
             .alias('pmi'))\
     .rename_obs({
-        'exp_component_name': 'cell_id', 
+        'exp_component_name': 'cell_id',
         'Donor ID': 'sample', 'Subclass': 'cell_type',
         'Continuous Pseudo-progression Score': 'cp_score',
         'Age at Death': 'age_at_death', 'Sex': 'sex'})\
@@ -76,7 +76,7 @@ sc = sc\
         'title', 'normalized', 'QCed'])\
     .qc_metrics(
         num_counts_column='nCount_RNA',
-        num_genes_column='nFeature_RNA', 
+        num_genes_column='nFeature_RNA',
         mito_fraction_column='percent.mt',
         allow_float=True)
 
@@ -87,28 +87,28 @@ print(sc.peek_var())
 '''
 SingleCell dataset with 1,214,581 cells (obs), 36,601 genes (var),
 and 5,827,739,288 non-zero entries (X)
-    obs: cell_id, sample, cell_type, cp_score, cond, apoe4_dosage, pmi, 
+    obs: cell_id, sample, cell_type, cp_score, cond, apoe4_dosage, pmi,
         age_at_death,
         sex, nCount_RNA, nFeature_RNA, percent.mt
     var: gene_symbol
     uns: QCed, normalized
 
-column        value                           
- cell_id       TTCATGTCAATGTTGC-L8TX_210429_0… 
- sample        H21.33.003                      
- cell_type     Sst                             
- cp_score      0.238033394                     
- cond          0                               
- apoe4_dosage  0                               
- pmi           10.0                            
- age_at_death  78.0                            
- sex           Male                            
- nCount_RNA    20335                           
- nFeature_RNA  5779                            
- percent.mt    0.00049176294                
+column        value
+ cell_id       TTCATGTCAATGTTGC-L8TX_210429_0…
+ sample        H21.33.003
+ cell_type     Sst
+ cp_score      0.238033394
+ cond          0
+ apoe4_dosage  0
+ pmi           10.0
+ age_at_death  78.0
+ sex           Male
+ nCount_RNA    20335
+ nFeature_RNA  5779
+ percent.mt    0.00049176294
 
-column       value       
- gene_symbol  MIR1302-2HG 
+column       value
+ gene_symbol  MIR1302-2HG
 '''
 
 sc.save(f'{dir_data}/SEAAD_raw.h5ad', overwrite=True)
@@ -139,19 +139,41 @@ if not os.path.exists(file_ref_data):
 sc = SingleCell(file_data)\
     .rename_obs({'_index': 'cell_id', 'treatment': 'cond'})\
     .select_obs('sample', 'donor', 'cytokine', 'cond', 'cell_type')\
-    .with_columns_obs(
-        pl.col('cytokine').cast(pl.String)
-            .str.replace_all('-', '_').alias('cytokine'))\
     .rename_var({'_index': 'gene_symbol'})\
     .drop_var('n_cells')\
     .qc_metrics(
         num_counts_column='nCount_RNA',
-        num_genes_column='nFeature_RNA', 
+        num_genes_column='nFeature_RNA',
         mito_fraction_column='percent.mt',
         allow_float=True)
 
 print(sc)
 print(sc.peek_obs())
+print(sc.peek_var())
+
+'''
+SingleCell dataset with 9,697,974 cells (obs), 40,352 genes (var),
+and 18,830,591,942 non-zero entries (X)
+    obs: cell_id, sample, donor, cytokine, cond, cell_type, nCount_RNA,
+    nFeature_RNA,
+         percent.mt
+    var: gene_symbol
+    uns: QCed, normalized
+
+column        value
+ cell_id       89_103_005__s1
+ sample        Donor10_4-1BBL
+ donor         Donor10
+ cytokine      4-1BBL
+ cond          cytokine
+ cell_type     CD8 Naive
+ nCount_RNA    4700
+ nFeature_RNA  2236
+ percent.mt    0.011914894
+
+column       value
+ gene_symbol  TSPAN6
+'''
 
 sc.save(f'{dir_data}/Parse_PBMC_raw.h5ad', overwrite=True)
 sc.subsample_obs(n=200000, by_column='cell_type', QC_column=None)\

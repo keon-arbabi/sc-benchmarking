@@ -11,11 +11,9 @@ DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_ACC <- args[4]
 
-scratch_dir <- Sys.getenv("SCRATCH")
-bpcells_dir_test <- file.path(scratch_dir, "bpcells", "transfer")
-if (!dir.exists(bpcells_dir_test)) {
-    dir.create(bpcells_dir_test, recursive = TRUE)
-}
+bpcells_dir <- file.path(
+  Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATASET_NAME))
+unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
 
@@ -25,16 +23,11 @@ cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
 
 timers <- MemoryTimer(silent = FALSE)
 
-query_dir <- file.path(bpcells_dir_test, "query")
-if (file.exists(query_dir)) {
-  unlink(query_dir, recursive = TRUE)
-}
-
 timers$with_timer("Load data", {
   mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-  write_matrix_dir(mat = mat_disk, dir = query_dir)
-  mat <- open_matrix_dir(dir = query_dir)
+  write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
+  mat <- open_matrix_dir(dir = bpcells_dir)
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
@@ -102,7 +95,7 @@ if (!any(timers_df$aborted)) {
   cat("--- Completed successfully ---\n")
 }
 
-unlink(query_dir, recursive = TRUE)
+unlink(bpcells_dir, recursive = TRUE)
 
 rm(data_query, data_ref, anchors, predictions, timers,
   timers_df, accuracy_df, mat, mat_disk, obs_metadata)

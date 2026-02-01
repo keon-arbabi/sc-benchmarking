@@ -275,6 +275,7 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
                 f'#SBATCH -t {runtime}\n'
                 f'#SBATCH -J {job_name}\n'
                 f'#SBATCH -o {log_file}\n'
+                f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'set -euo pipefail; {command}\n',
                 file=temp_file)
 

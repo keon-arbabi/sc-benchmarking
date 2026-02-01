@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
         elif DATASET_NAME == 'PBMC':
             data_pb = data_pb\
-                .filter_obs(pl.col('cytokine').is_in(['IFN_gamma', 'PBS']))\
+                .filter_obs(pl.col('cytokine').is_in(['IFN-gamma', 'PBS']))\
                 .qc('cytokine', verbose=False)
 
     with timers('Differential expression'):
@@ -66,7 +66,7 @@ if __name__ == '__main__':
             formula = '~ 0 + cytokine + donor + ' \
                 'log2(num_cells) + log2(library_size)'
             contrasts = {
-                'IFN_gamma_vs_PBS': 'cytokineIFN_gamma - cytokinePBS'}
+                'IFN-gamma_vs_PBS': 'cytokineIFN-gamma - cytokinePBS'}
             de = data_pb\
                 .library_size()\
                 .DE(formula,

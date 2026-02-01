@@ -65,8 +65,7 @@ if __name__ == '__main__':
         plt.savefig(
             f'sc-benchmarking/figures/scanpy_embedding_{DATASET_NAME}.png',
             dpi=300,
-            bbox_inches='tight',
-            pad_inches='layout')
+            bbox_inches='tight')
 
     with timers('Find markers'):
         sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')

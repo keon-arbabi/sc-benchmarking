@@ -11,24 +11,17 @@ DATASET_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 
-scratch_dir <- Sys.getenv("SCRATCH")
-bpcells_dir_test <- file.path(scratch_dir, "bpcells", "de")
-if (!dir.exists(bpcells_dir_test)) {
-  dir.create(bpcells_dir_test, recursive = TRUE)
-}
+bpcells_dir <- file.path(
+  Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATASET_NAME))
+unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
 cat("--- Params ---\n")
-cat("seurat de\n")
+cat("seurat de deseq\n")
 cat(sprintf("R.version=%s\n", R.version.string))
 cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
 
 timers <- MemoryTimer(silent = FALSE)
-
-bpcells_dir <- file.path(bpcells_dir_test, "data")
-if (file.exists(bpcells_dir)) {
-  unlink(bpcells_dir, recursive = TRUE)
-}
 
 timers$with_timer("Load data", {
   mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
@@ -52,50 +45,42 @@ if (DATASET_NAME == "SEAAD") {
       data,
       assays = "RNA",
       return.seurat = TRUE,
-      group.by = c("cond", "sample", "cell_type")
-    )
+      group.by = c("cond", "sample", "cell_type"))
   })
 
   timers$with_timer("Differential expression", {
     data$group <- paste(data$cell_type, data$cond, sep = "_")
     Idents(data) <- "group"
-
     de_list <- list()
     for (ct in unique(data$cell_type)) {
       de_list[[ct]] <- FindMarkers(
         data,
         ident.1 = paste(ct, "AD", sep = "_"),
         ident.2 = paste(ct, "Control", sep = "_"),
-        test.use = "DESeq2"
-      )
+        test.use = "DESeq2")
     }
     de <- do.call(rbind, de_list)
   })
 
 } else if (DATASET_NAME == "PBMC") {
-  data <- subset(data, subset = cytokine %in% c("IFN_gamma", "PBS"))
+  data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
 
   timers$with_timer("Data transformation", {
     data <- AggregateExpression(
-      data,
-      assays = "RNA",
-      return.seurat = TRUE,
-      group.by = c("cytokine", "sample", "cell_type")
-    )
+      data, assays = "RNA", return.seurat = TRUE,
+      group.by = c("cytokine", "sample", "cell_type"))
   })
 
   timers$with_timer("Differential expression", {
     data$group <- paste(data$cell_type, data$cytokine, sep = "_")
     Idents(data) <- "group"
-
     de_list <- list()
     for (ct in unique(data$cell_type)) {
       de_list[[ct]] <- FindMarkers(
         data,
-        ident.1 = paste(ct, "IFN_gamma", sep = "_"),
+        ident.1 = paste(ct, "IFN-gamma", sep = "_"),
         ident.2 = paste(ct, "PBS", sep = "_"),
-        test.use = "DESeq2"
-      )
+        test.use = "DESeq2")
     }
     de <- do.call(rbind, de_list)
   })
@@ -105,7 +90,7 @@ timers$print_summary(unit = "s")
 
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- "seurat"
-timers_df$test <- "de"
+timers_df$test <- "de_deseq"
 timers_df$dataset <- DATASET_NAME
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 

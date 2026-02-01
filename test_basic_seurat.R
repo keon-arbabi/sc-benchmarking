@@ -4,8 +4,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
-work_dir <- "sc-benchmarking"
-source(file.path(work_dir, "utils_local.R"))
+source("sc-benchmarking/utils_local.R")
 
 ARGS <- commandArgs(trailingOnly=TRUE)
 DATASET_NAME <- ARGS[1]
@@ -15,28 +14,15 @@ OUTPUT_PATH_TIME <- ARGS[3]
 system_info()
 timers <- MemoryTimer(silent = FALSE)
 
-scratch_dir <- "single-cell/BPCells-Scratch"
-bpcells_dir_test <- file.path(scratch_dir, "bpcells", "basic")
-if (!dir.exists(bpcells_dir_test)) {
-    dir.create(bpcells_dir_test, recursive = TRUE)
-}
-if (file.exists(bpcells_dir_test)) {
-  unlink(bpcells_dir_test, recursive = TRUE)
-}
+bpcells_dir <- file.path(
+  Sys.getenv("SCRATCH"), "bpcells", "basic", paste0("data_", DATASET_NAME))
+unlink(bpcells_dir, recursive = TRUE)
 
 timers$with_timer("Load data", {
-  mat_disk <- open_matrix_anndata_hdf5(
-    path = DATA_PATH)
+  mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
-  file_path <- file.path(bpcells_dir_test)
-  write_matrix_dir(
-    mat = mat_disk,
-    dir = file_path
-  )
-})
-
-timers$with_timer("Load data", {
-  mat <- open_matrix_dir(dir = file_path)
+  write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
+  mat <- open_matrix_dir(dir = bpcells_dir)
   # custom reader required
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
@@ -78,9 +64,10 @@ timers$with_timer("Embedding", {
 })
 
 timers$with_timer("Plot embedding", {
-  DimPlot(data, reduction = "umap", group.by = "cell_type")
-  ggsave(paste0(work_dir, "/figures/seurat_embedding_", DATASET_NAME, ".png"),
-        dpi = 300, units = "in", width = 10, height = 10)
+  p <- DimPlot(data, reduction = "umap", group.by = "cell_type")
+  ggsave(
+    paste0("sc-benchmarking/figures/seurat_embedding_", DATASET_NAME, ".png"),
+    plot = p, dpi = 300, units = "in", width = 10, height = 10)
 })
 
 timers$with_timer("Find markers", {
@@ -96,6 +83,8 @@ timers_df$dataset <- DATASET_NAME
 
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
-unlink(bpcells_dir_test, recursive = TRUE)
+unlink(bpcells_dir, recursive = TRUE)
 rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata)
 gc()
+
+cat("--- Completed successfully ---\n")
