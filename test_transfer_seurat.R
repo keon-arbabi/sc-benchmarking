@@ -3,6 +3,7 @@ suppressPackageStartupMessages({
   library(BPCells)
 })
 
+options(future.globals.maxSize = Inf)
 source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
@@ -10,6 +11,7 @@ DATASET_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_ACC <- args[4]
+INPUT_PATH_DOUBLET <- args[5]
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATASET_NAME))
@@ -36,6 +38,10 @@ timers$with_timer("Quality control", {
   data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
   data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
 })
+
+doublet_df <- read.csv(INPUT_PATH_DOUBLET)
+doublets <- doublet_df$cell_id[doublet_df$is_doublet]
+data <- subset(data, cells = setdiff(colnames(data), doublets))
 
 timers$with_timer("Split data", {
   if (DATASET_NAME == 'SEAAD') {
@@ -94,6 +100,9 @@ write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 if (!any(timers_df$aborted)) {
   cat("--- Completed successfully ---\n")
 }
+
+cat("\n--- Session Info ---\n")
+print(sessionInfo())
 
 unlink(bpcells_dir, recursive = TRUE)
 

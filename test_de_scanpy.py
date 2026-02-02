@@ -11,6 +11,7 @@ warnings.filterwarnings("ignore")
 DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
+INPUT_PATH_DOUBLET = sys.argv[4]
 
 if __name__ == '__main__':
 
@@ -31,11 +32,9 @@ if __name__ == '__main__':
         sc.pp.filter_cells(data, min_genes=200)
         sc.pp.filter_genes(data, min_cells=3)
 
-    with timers('Doublet detection'):
-        sc.pp.scrublet(data, batch_key='sample')
-
-    with timers('Quality control'):
-        data = data[data.obs['predicted_doublet'] == False].copy()
+    doublet_df = pl.read_csv(INPUT_PATH_DOUBLET)
+    doublets = doublet_df.filter(pl.col('is_doublet'))['cell_id'].to_list()
+    data = data[~data.obs_names.isin(doublets)].copy()
 
     with timers('Data transformation'):
         sc.pp.normalize_total(data)

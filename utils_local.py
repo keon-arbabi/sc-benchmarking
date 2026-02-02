@@ -34,7 +34,7 @@ class MemoryTimer:
         @contextmanager
         def timer():
             if not self.silent:
-                print(f'{message}...')
+                print(f'{message}...', flush=True)
             # Start monitor with fast sampling
             monitor = subprocess.Popen(
                 [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
@@ -74,7 +74,7 @@ class MemoryTimer:
                     status = 'aborted after' if aborted else 'took'
                     time_str = self._format_time(duration)
                     print(f'{message} {status} {time_str} using '
-                          f'{memory_gb} GiB\n')
+                          f'{memory_gb} GiB\n', flush=True)
 
                 # Update or create timing entry
                 if message in self.timings:
@@ -237,15 +237,15 @@ def system_info():
         except FileNotFoundError:
             pass
 
-    print(f'\n--- User Resource Allocation ---')
-    print(f'Node: {hostname}')
-    print(f'User: {user}')
-    print(f'CPU Cores Allocated: {cpu_cores}')
-    print(f'Memory Allocated: {mem_gb}')
-    print(f'Python Version: {sys.version}')
+    print(f'\n--- User Resource Allocation ---', flush=True)
+    print(f'Node: {hostname}', flush=True)
+    print(f'User: {user}', flush=True)
+    print(f'CPU Cores Allocated: {cpu_cores}', flush=True)
+    print(f'Memory Allocated: {mem_gb}', flush=True)
+    print(f'Python Version: {sys.version}', flush=True)
 
 def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
-              account='def-wainberg'):
+              account='def-wainberg', dependency=None):
     from tempfile import NamedTemporaryFile
 
     cluster = os.environ.get('CLUSTER')
@@ -265,6 +265,10 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
             if memory != '0':
                 memory_line = f'#SBATCH --mem {memory}\n'
 
+            dependency_line = ''
+            if dependency:
+                dependency_line = f'#SBATCH --dependency=afterok:{dependency}\n'
+
             print(
                 f'#!/bin/bash\n'
                 f'{partition}'
@@ -272,10 +276,12 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
                 f'#SBATCH -N 1\n'
                 f'#SBATCH -n {CPUs}\n'
                 f'{memory_line}'
+                f'{dependency_line}'
                 f'#SBATCH -t {runtime}\n'
                 f'#SBATCH -J {job_name}\n'
                 f'#SBATCH -o {log_file}\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
+                f'export PYTHONUNBUFFERED=1\n'
                 f'set -euo pipefail; {command}\n',
                 file=temp_file)
 
@@ -287,8 +293,9 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
 
         if result.returncode != 0:
             print(f'Error submitting job {job_name}: {result.stderr}')
-        else:
-            print(f'Job submitted: {result.stdout.strip()}')
+            return None
+        print(f'Job submitted: {result.stdout.strip()}')
+        return result.stdout.strip().split()[-1]
     finally:
         try:
             os.unlink(temp_file.name)

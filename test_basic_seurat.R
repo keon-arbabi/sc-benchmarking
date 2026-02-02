@@ -1,17 +1,27 @@
 suppressPackageStartupMessages({
   library(BPCells)
   library(Seurat)
+  library(SingleCellExperiment)
+  library(scDblFinder)
+  library(BiocParallel)
   library(ggplot2)
 })
 
+options(future.globals.maxSize = Inf)
 source("sc-benchmarking/utils_local.R")
 
 ARGS <- commandArgs(trailingOnly=TRUE)
 DATASET_NAME <- ARGS[1]
 DATA_PATH <- ARGS[2]
 OUTPUT_PATH_TIME <- ARGS[3]
+OUTPUT_PATH_EMBEDDING <- ARGS[4]
+OUTPUT_PATH_DOUBLET <- ARGS[5]
 
 system_info()
+cat("--- Params ---\n")
+cat("seurat basic\n")
+cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
+
 timers <- MemoryTimer(silent = FALSE)
 
 bpcells_dir <- file.path(
@@ -33,6 +43,28 @@ timers$with_timer("Quality control", {
   data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
 })
 
+timers$with_timer("Doublet detection", {
+  counts_full <- LayerData(data, assay = "RNA", layer = "counts")
+  bp <- MulticoreParam(workers = 120, RNGseed = 123)
+  doublet_results <- do.call(rbind, lapply(unique(data$sample), function(s) {
+    cells <- colnames(data)[data$sample == s]
+    counts <- as(counts_full[, cells], "dgCMatrix")
+    sce <- scDblFinder(
+      SingleCellExperiment(assays = list(counts = counts)),
+      BPPARAM = bp,
+      verbose = FALSE)
+    data.frame(
+      cell_id = colnames(sce),
+      doublet_score = sce$scDblFinder.score,
+      is_doublet = sce$scDblFinder.class == "doublet")
+  }))
+  bpstop(bp)
+  doublets <- doublet_results$cell_id[doublet_results$is_doublet]
+  data <- subset(data, cells = setdiff(colnames(data), doublets))
+})
+
+write.csv(doublet_results, OUTPUT_PATH_DOUBLET, row.names = FALSE)
+
 timers$with_timer("Normalization", {
   data <- NormalizeData(
     data, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -44,8 +76,7 @@ timers$with_timer("Feature selection", {
 })
 
 timers$with_timer("PCA", {
-  all.genes <- rownames(data)
-  data <- ScaleData(data, features = all.genes)
+  data <- ScaleData(data)
   data <- RunPCA(data, features = VariableFeatures(object = data))
 })
 
@@ -62,6 +93,13 @@ timers$with_timer("Clustering (3 res.)", {
 timers$with_timer("Embedding", {
   data <- RunUMAP(data, dims = 1:10)
 })
+
+embedding_df <- data.frame(
+  cell_id = colnames(data),
+  embed_1 = Embeddings(data, "umap")[, 1],
+  embed_2 = Embeddings(data, "umap")[, 2]
+)
+write.csv(embedding_df, OUTPUT_PATH_EMBEDDING, row.names = FALSE)
 
 timers$with_timer("Plot embedding", {
   p <- DimPlot(data, reduction = "umap", group.by = "cell_type")
@@ -88,3 +126,6 @@ rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata)
 gc()
 
 cat("--- Completed successfully ---\n")
+
+cat("\n--- Session Info ---\n")
+print(sessionInfo())

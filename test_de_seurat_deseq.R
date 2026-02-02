@@ -4,12 +4,14 @@ suppressPackageStartupMessages({
   library(BPCells)
 })
 
+options(future.globals.maxSize = Inf)
 source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
 DATASET_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
+INPUT_PATH_DOUBLET <- args[4]
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATASET_NAME))
@@ -18,7 +20,6 @@ unlink(bpcells_dir, recursive = TRUE)
 system_info()
 cat("--- Params ---\n")
 cat("seurat de deseq\n")
-cat(sprintf("R.version=%s\n", R.version.string))
 cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
 
 timers <- MemoryTimer(silent = FALSE)
@@ -37,6 +38,10 @@ timers$with_timer("Quality control", {
   data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
 })
 
+doublet_df <- read.csv(INPUT_PATH_DOUBLET)
+doublets <- doublet_df$cell_id[doublet_df$is_doublet]
+data <- subset(data, cells = setdiff(colnames(data), doublets))
+
 if (DATASET_NAME == "SEAAD") {
   data$cond <- ifelse(data$cond == 1, "AD", "Control")
 
@@ -45,7 +50,8 @@ if (DATASET_NAME == "SEAAD") {
       data,
       assays = "RNA",
       return.seurat = TRUE,
-      group.by = c("cond", "sample", "cell_type"))
+      group.by = c("cond", "sample", "cell_type"),
+      verbose = FALSE)
   })
 
   timers$with_timer("Differential expression", {
@@ -66,9 +72,16 @@ if (DATASET_NAME == "SEAAD") {
   data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
 
   timers$with_timer("Data transformation", {
-    data <- AggregateExpression(
-      data, assays = "RNA", return.seurat = TRUE,
-      group.by = c("cytokine", "sample", "cell_type"))
+    cell_groups <- paste(data$cytokine, data$sample, data$cell_type, sep = "_")
+    mat <- GetAssayData(data, layer = "counts")
+    pb_mat <- pseudobulk_matrix(mat, cell_groups, method = "sum")
+    pb_meta <- data@meta.data %>%
+      mutate(group = cell_groups) %>%
+      distinct(group, .keep_all = TRUE)
+    rownames(pb_meta) <- pb_meta$group
+    pb_meta <- pb_meta[colnames(pb_mat), ]
+    data <- CreateSeuratObject(counts = pb_mat, meta.data = pb_meta)
+    data <- NormalizeData(data, verbose = FALSE)
   })
 
   timers$with_timer("Differential expression", {
@@ -97,6 +110,9 @@ write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 if (!any(timers_df$aborted)) {
   cat("--- Completed successfully ---\n")
 }
+
+cat("\n--- Session Info ---\n")
+print(sessionInfo())
 
 unlink(bpcells_dir, recursive = TRUE)
 rm(data, de, de_list, timers, timers_df, mat, mat_disk, obs_metadata)

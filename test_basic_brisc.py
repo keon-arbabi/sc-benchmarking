@@ -10,9 +10,10 @@ DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
+OUTPUT_PATH_EMBEDDING = sys.argv[5]
 
 if __name__ == '__main__':
-    
+
     system_info()
     print('--- Params ---')
     print('brisc basic')
@@ -56,6 +57,13 @@ if __name__ == '__main__':
 
     with timers('Embedding'):
         data = data.embed(QC_column=None)
+
+    embedding_df = pl.DataFrame({
+        'cell_id': data.obs['cell_id'],
+        'embed_1': data.obsm['LocalMAP'][:, 0],
+        'embed_2': data.obsm['LocalMAP'][:, 1]
+    })
+    embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
     with timers('Plot embedding'):
         data.plot_embedding(

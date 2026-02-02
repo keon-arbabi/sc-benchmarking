@@ -9,22 +9,26 @@ OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
 FIGURES_DIR = os.path.join(WORK_DIR, 'figures')
 
+PYTHON = '/home/wainberg/bin/python3.13'
+RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
+
 DATASETS = {
-    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
-    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw_50K.h5ad'),
+    # 'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
 }
 
+# (file, tool, task, thread_params)
 SCRIPTS = [
-    'test_basic_brisc.py',
-    'test_basic_scanpy.py',
-    'test_basic_seurat.R',
-    'test_de_brisc.py',
-    'test_de_scanpy.py',
-    'test_de_seurat_deseq.R',
-    'test_de_seurat_wilcox.R',
-    'test_transfer_brisc.py',
-    'test_transfer_scanpy.py',
-    'test_transfer_seurat.R',
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
+    ('test_basic_scanpy.py', 'scanpy', 'basic', None),
+    ('test_basic_seurat.R', 'seurat', 'basic', None),
+    ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
+    ('test_de_scanpy.py', 'scanpy', 'de', None),
+    ('test_de_seurat_deseq.R', 'seurat', 'de_deseq', None),
+    ('test_de_seurat_wilcox.R', 'seurat', 'de_wilcox', None),
+    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
+    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
+    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
 ]
 
 if __name__ == '__main__':
@@ -33,26 +37,24 @@ if __name__ == '__main__':
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    for script_file in SCRIPTS:
-        name, ext = os.path.splitext(script_file)
-        python_path = '/home/wainberg/bin/python3.13'
-        rscript_path = '/home/wainberg/bin/Rscript-4.5.1'
-        interpreter = (rscript_path if ext == '.R' else python_path)
+    basic_job_ids = {}
+
+    for script_file, tool, task, thread_params in SCRIPTS:
+        interpreter = RSCRIPT if script_file.endswith('.R') else PYTHON
         script_path = os.path.join(WORK_DIR, script_file)
+        uses_doublet_cache = tool in ('scanpy', 'seurat')
+        is_basic = task == 'basic'
+        is_transfer = task == 'transfer'
 
         for d_name, d_path in DATASETS.items():
-            param_sets = [(-1,), (1,)] if 'brisc' in name else [()]
+            for threads in (thread_params or [None]):
+                job_parts = [(task.replace('_', f'_{tool}_', 1) if '_' in task
+                              else f'{task}_{tool}'), d_name]
+                if threads is not None:
+                    job_parts.append(str(threads))
+                job_name = '_'.join(job_parts)
 
-            for params_tuple in param_sets:
-                short_name = name.removeprefix('test_')
-                params_str = [str(p) for p in params_tuple]
-                job_name = '_'.join([short_name, d_name] + params_str)
-                output_timings = os.path.join(
-                    OUTPUT_DIR, f'{job_name}_timer.csv')
-                output_accuracy = os.path.join(
-                    OUTPUT_DIR, f'{job_name}_accuracy.csv')
                 log = os.path.join(LOG_DIR, f'{job_name}.log')
-
                 if os.path.exists(log):
                     with open(log, 'r') as f:
                         if 'Completed successfully' in f.read():
@@ -60,16 +62,35 @@ if __name__ == '__main__':
                             continue
 
                 cmd = [interpreter, script_path, d_name, d_path]
-                cmd.extend([str(p) for p in params_tuple])
-                cmd.append(output_timings)
-                if 'transfer' in name:
-                    cmd.append(output_accuracy)
+                if threads is not None:
+                    cmd.append(str(threads))
+                cmd.append(os.path.join(OUTPUT_DIR, f'{job_name}_timer.csv'))
+                if is_basic:
+                    cmd.append(os.path.join(
+                        OUTPUT_DIR, f'{job_name}_embedding.csv'))
+                if is_transfer:
+                    cmd.append(os.path.join(
+                        OUTPUT_DIR, f'{job_name}_accuracy.csv'))
+                if uses_doublet_cache:
+                    cmd.append(os.path.join(
+                        OUTPUT_DIR, f'{tool}_{d_name}_doublets.csv'))
 
                 pythonpath = f'{os.getcwd()}:$PYTHONPATH'
                 full_cmd = (
                     f'export PYTHONPATH={pythonpath} && '
                     f'{" ".join(cmd)}')
-                run_slurm(
+
+                dependency = (basic_job_ids.get((tool, d_name))
+                              if uses_doublet_cache and not is_basic
+                              else None)
+
+                job_id = run_slurm(
                     full_cmd, job_name=job_name, log_file=log,
+                    # account='def-wainberg',
+                    account='rrg-shreejoy',
                     CPUs=192,
-                    hours=24 if ext == '.R' else 12)
+                    hours=24,
+                    dependency=dependency)
+
+                if uses_doublet_cache and is_basic and job_id:
+                    basic_job_ids[(tool, d_name)] = job_id

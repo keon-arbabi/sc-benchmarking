@@ -1,14 +1,19 @@
 import gc
 import sys
+import warnings
 import polars as pl
 import scanpy as sc
 import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
+warnings.filterwarnings("ignore")
+
 DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
+OUTPUT_PATH_EMBEDDING = sys.argv[4]
+OUTPUT_PATH_DOUBLET = sys.argv[5]
 
 if __name__ == '__main__':
 
@@ -32,6 +37,12 @@ if __name__ == '__main__':
     with timers('Doublet detection'):
         sc.pp.scrublet(data, batch_key='sample')
 
+    pl.DataFrame({
+        'cell_id': data.obs_names.tolist(),
+        'doublet_score': data.obs['doublet_score'].tolist(),
+        'is_doublet': data.obs['predicted_doublet'].tolist()
+    }).write_csv(OUTPUT_PATH_DOUBLET)
+
     with timers('Quality control'):
         data = data[data.obs['predicted_doublet'] == False].copy()
 
@@ -50,6 +61,13 @@ if __name__ == '__main__':
 
     with timers('Embedding'):
         sc.tl.umap(data)
+
+    embedding_df = pl.DataFrame({
+        'cell_id': data.obs_names.tolist(),
+        'embed_1': data.obsm['X_umap'][:, 0],
+        'embed_2': data.obsm['X_umap'][:, 1]
+    })
+    embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
     with timers('Clustering (3 res.)'):
         for res in [0.5, 1.0, 2.0]:
