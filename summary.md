@@ -181,7 +181,7 @@ BRISC is the only tool performing proper pseudobulk DE with covariate adjustment
 - Seurat: nFeature_RNA > 200, percent.mt < 5
 
 **Threading**
-- BRISC: Configurable (-1 for single-threaded, 1 for multi-threaded)
+- BRISC: Configurable (1 = single-threaded, -1 = multi-threaded/all cores)
 - Scanpy: Single-threaded
 - Seurat: Single-threaded (except BiocParallel for scDblFinder)
 
