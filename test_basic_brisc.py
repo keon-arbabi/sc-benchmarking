@@ -11,6 +11,7 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
+OUTPUT_PATH_DOUBLET = sys.argv[6]
 
 if __name__ == '__main__':
 
@@ -34,6 +35,12 @@ if __name__ == '__main__':
 
     with timers('Doublet detection'):
         data = data.find_doublets(batch_column='sample')
+
+    pl.DataFrame({
+        'cell_id': data.obs['cell_id'],
+        'doublet_score': data.obs['doublet_score'],
+        'is_doublet': data.obs['doublet']
+    }).write_csv(OUTPUT_PATH_DOUBLET)
 
     with timers('Quality control'):
         data = data.filter_obs(pl.col('doublet').not_() & pl.col('passed_QC'))

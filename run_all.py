@@ -14,7 +14,7 @@ RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
 
 DATASETS = {
     'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw_50K.h5ad'),
-    # 'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
 }
 
 # (file, tool, task, thread_params)
@@ -68,10 +68,12 @@ if __name__ == '__main__':
                 if is_basic:
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{job_name}_embedding.csv'))
+                    cmd.append(os.path.join(
+                        OUTPUT_DIR, f'{tool}_{d_name}_doublets.csv'))
                 if is_transfer:
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{job_name}_accuracy.csv'))
-                if uses_doublet_cache:
+                if uses_doublet_cache and not is_basic:
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{tool}_{d_name}_doublets.csv'))
 
