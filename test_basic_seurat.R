@@ -17,6 +17,9 @@ OUTPUT_PATH_TIME <- ARGS[3]
 OUTPUT_PATH_EMBEDDING <- ARGS[4]
 OUTPUT_PATH_DOUBLET <- ARGS[5]
 
+DATASET_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
+
 system_info()
 cat("--- Params ---\n")
 cat("seurat basic\n")
@@ -81,12 +84,16 @@ timers$with_timer("PCA", {
 })
 
 timers$with_timer("Nearest neighbors", {
-  data <- FindNeighbors(data, dims = 1:10)
+  pca_mat <- Embeddings(data, "pca")[, 1:10]
+  knn <- knn_hnsw(pca_mat, k = 20)
+  snn <- knn_to_snn_graph(knn)
 })
 
 timers$with_timer("Clustering (3 res.)", {
   for (resolution in c(0.5, 2, 1)) {
-    data <- FindClusters(data, resolution = resolution)
+    cl <- cluster_graph_leiden(snn, resolution = resolution)
+    data[[paste0("clusters_", format(resolution, nsmall = 1))]] <-
+      as.character(cl)
   }
 })
 
@@ -97,12 +104,16 @@ timers$with_timer("Embedding", {
 embedding_df <- data.frame(
   cell_id = colnames(data),
   embed_1 = Embeddings(data, "umap")[, 1],
-  embed_2 = Embeddings(data, "umap")[, 2]
+  embed_2 = Embeddings(data, "umap")[, 2],
+  cell_type = data$cell_type,
+  clusters_0.5 = data[["clusters_0.5"]],
+  clusters_1.0 = data[["clusters_1.0"]],
+  clusters_2.0 = data[["clusters_2.0"]]
 )
 write.csv(embedding_df, OUTPUT_PATH_EMBEDDING, row.names = FALSE)
 
 timers$with_timer("Plot embedding", {
-  p <- DimPlot(data, reduction = "umap", group.by = "cell_type")
+  p <- DimPlot(data, reduction = "umap", group.by = "clusters_1.0")
   ggsave(
     paste0("sc-benchmarking/figures/seurat_embedding_", DATASET_NAME, ".png"),
     plot = p, dpi = 300, units = "in", width = 10, height = 10)

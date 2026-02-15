@@ -51,7 +51,8 @@ if __name__ == '__main__':
         sc.pp.log1p(data)
 
     with timers('Feature selection'):
-        sc.pp.highly_variable_genes(data, n_top_genes=2000, batch_key='sample')
+        sc.pp.highly_variable_genes(
+            data, n_top_genes=2000, batch_key='sample')
 
     with timers('PCA'):
         sc.tl.pca(data)
@@ -62,13 +63,6 @@ if __name__ == '__main__':
     with timers('Embedding'):
         sc.tl.umap(data)
 
-    embedding_df = pl.DataFrame({
-        'cell_id': data.obs_names.tolist(),
-        'embed_1': data.obsm['X_umap'][:, 0],
-        'embed_2': data.obsm['X_umap'][:, 1]
-    })
-    embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
-
     with timers('Clustering (3 res.)'):
         for res in [0.5, 1.0, 2.0]:
             sc.tl.leiden(
@@ -77,6 +71,17 @@ if __name__ == '__main__':
                 flavor='igraph',
                 n_iterations=2,
                 key_added=f'leiden_res_{res:4.2f}')
+
+    embedding_df = pl.DataFrame({
+        'cell_id': data.obs_names.tolist(),
+        'embed_1': data.obsm['X_umap'][:, 0],
+        'embed_2': data.obsm['X_umap'][:, 1],
+        'cell_type': data.obs['cell_type'].tolist(),
+        'clusters_0.5': data.obs['leiden_res_0.50'].tolist(),
+        'clusters_1.0': data.obs['leiden_res_1.00'].tolist(),
+        'clusters_2.0': data.obs['leiden_res_2.00'].tolist(),
+    })
+    embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
     with timers('Plot embedding'):
         sc.pl.umap(data, color='cell_type')

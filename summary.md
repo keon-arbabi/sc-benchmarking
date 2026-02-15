@@ -75,6 +75,9 @@ Memory is tracked via a background shell process that polls at 50ms intervals:
 
 PSS is more accurate than RSS for shared memory scenarios since it divides shared pages proportionally among processes.
 
+TODO: Track across time?
+
+
 ---
 
 ## Implementation Quirks
@@ -109,6 +112,19 @@ Seurat cannot read h5ad files directly. The loading process:
 5. Read obs metadata separately via custom read_h5ad_obs() function
 6. Create Seurat object from both pieces
 
+### Seurat+BPCells SNN Graph Limitation
+
+Seurat's `FindNeighbors` → `ComputeSNN` fails on very large datasets (e.g., PBMC 9.7M cells) with `std::bad_alloc`. The failure is in Seurat's C++ SNN implementation, which cannot handle this scale.
+
+**Solution:** Replace `FindNeighbors()` + `FindClusters()` with BPCells native functions: `knn_hnsw()` + `knn_to_snn_graph()` + `cluster_graph_leiden()`. Applied consistently to both SEAAD and PBMC datasets.
+
+- `knn_hnsw()` uses HNSW approximate nearest neighbors (same class as Seurat's Annoy-based search)
+- `knn_to_snn_graph()` explicitly implements "the algorithm that Seurat uses to compute SNN graphs" (per BPCells source)
+- `cluster_graph_leiden()` uses the Leiden community detection algorithm
+- BPCells' `build_snn_graph_cpp` computes the filtered SNN graph directly in C++, avoiding the intermediate allocation issue in Seurat's `ComputeSNN`
+
+This is defensible because the pipeline already uses BPCells for data loading and disk-backed storage — extending to kNN/SNN/clustering is the natural integration of the officially recommended Seurat+BPCells stack.
+
 ---
 
 ## DE Testing Design Differences
@@ -117,6 +133,7 @@ Seurat cannot read h5ad files directly. The loading process:
 - Aggregation: Pseudobulk by sample × cell_type
 - Method: Linear model
 - Covariates: Full adjustment (cond, apoe4_dosage, sex, age_at_death, log2 num_cells, log2 library_size)
+- QC: `Pseudobulk.qc()` filters to samples with ≥10 cells, removes outliers (>3 SD zero-gene count), keeps genes expressed in ≥80% of samples per group, requires ≥2 samples per group; cell types failing criteria are excluded
 
 **Scanpy**
 - Aggregation: None (cell-level)

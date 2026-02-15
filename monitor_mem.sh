@@ -77,7 +77,7 @@ while true; do
         PERCENT_MEM=$(awk -v t="$TOTAL" -v m="$TOTAL_MEM_KB" 'BEGIN {printf "%.2f", (t/m)*100}')
     fi
 
-    echo "$TOTAL, $PERCENT_MEM"
+    echo "$TOTAL, $PERCENT_MEM" 2>/dev/null
 
     sleep "$INTERVAL"
 done

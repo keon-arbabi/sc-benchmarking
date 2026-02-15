@@ -34,18 +34,16 @@ if __name__ == '__main__':
             verbose=False)
 
     with timers('Doublet detection'):
-        data = data.find_doublets(batch_column='sample')
+        data = data\
+            .find_doublets(batch_column='sample')\
+            .with_columns_obs(
+                pl.col('passed_QC') & pl.col('doublet').not_())
 
     pl.DataFrame({
         'cell_id': data.obs['cell_id'],
         'doublet_score': data.obs['doublet_score'],
         'is_doublet': data.obs['doublet']
     }).write_csv(OUTPUT_PATH_DOUBLET)
-
-    with timers('Quality control'):
-        data = data.filter_obs(pl.col('doublet').not_() & pl.col('passed_QC'))
-
-    data = data.drop_obs('passed_QC')
 
     with timers('Feature selection'):
         data = data.hvg()
@@ -68,7 +66,11 @@ if __name__ == '__main__':
     embedding_df = pl.DataFrame({
         'cell_id': data.obs['cell_id'],
         'embed_1': data.obsm['LocalMAP'][:, 0],
-        'embed_2': data.obsm['LocalMAP'][:, 1]
+        'embed_2': data.obsm['LocalMAP'][:, 1],
+        'cell_type': data.obs['cell_type'],
+        'clusters_0.5': data.obs['cluster_0'],
+        'clusters_1.0': data.obs['cluster_1'],
+        'clusters_2.0': data.obs['cluster_2'],
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 

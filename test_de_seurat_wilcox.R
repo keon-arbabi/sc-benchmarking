@@ -42,7 +42,7 @@ doublet_df <- read.csv(INPUT_PATH_DOUBLET)
 doublets <- doublet_df$cell_id[doublet_df$is_doublet]
 data <- subset(data, cells = setdiff(colnames(data), doublets))
 
-timers$with_timer("Normalization", {
+timers$with_timer("Data transformation", {
   data <- NormalizeData(
     data, normalization.method = "LogNormalize", scale.factor = 10000)
 })
