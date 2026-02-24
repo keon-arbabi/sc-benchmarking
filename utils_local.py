@@ -302,6 +302,7 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
         except (NameError, FileNotFoundError):
             pass
 
+# TODO
 def transfer_accuracy(obs, orig_col, trans_col):
     if isinstance(obs, pd.DataFrame):
         obs = pl.from_pandas(obs)

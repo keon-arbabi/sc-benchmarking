@@ -13,38 +13,20 @@ DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_EMBEDDING = sys.argv[4]
-OUTPUT_PATH_DOUBLET = sys.argv[5]
 
 if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
     print('scanpy basic')
-    print(f'{DATASET_NAME=}')
+    print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(silent=False)
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
 
-    with timers('Quality control'):
-        data.var['mt'] = data.var_names.str.startswith('MT-')
-        sc.pp.calculate_qc_metrics(
-            data, qc_vars=['mt'], inplace=True, log1p=True)
-        sc.pp.filter_cells(data, min_genes=100)
-        sc.pp.filter_genes(data, min_cells=3)
-
-    with timers('Doublet detection'):
-        sc.pp.scrublet(data, batch_key='sample')
-
-    pl.DataFrame({
-        'cell_id': data.obs_names.tolist(),
-        'doublet_score': data.obs['doublet_score'].tolist(),
-        'is_doublet': data.obs['predicted_doublet'].tolist()
-    }).write_csv(OUTPUT_PATH_DOUBLET)
-
-    with timers('Quality control'):
-        data = data[data.obs['predicted_doublet'] == False].copy()
+    data = data[data.obs['_passed_QC']].copy()
 
     with timers('Normalization'):
         sc.pp.normalize_total(data)

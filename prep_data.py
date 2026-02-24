@@ -33,7 +33,7 @@ if not os.path.exists(file_ref_data):
 
 donor_metadata = pl.read_excel(file_metadata)
 cols = ['sample',  'cell_type', 'cp_score', 'cond', 'apoe4_dosage',
-        'pmi', 'age_at_death', 'sex']
+        'pmi', 'age_at_death', 'sex', 'Doublet score']
 
 sc = SingleCell(file_data)
 sc = sc\
@@ -66,7 +66,6 @@ sc = sc\
         'Continuous Pseudo-progression Score': 'cp_score',
         'Age at Death': 'age_at_death', 'Sex': 'sex'})\
     .select_obs(cols)\
-    .filter_obs(pl.all_horizontal(pl.col(cols).is_not_null()))\
     .rename_var({'gene_ids': 'gene_symbol'})\
     .set_var_names('gene_symbol')\
     .drop_var('_index')\
@@ -78,18 +77,36 @@ sc = sc\
         num_counts_column='nCount_RNA',
         num_genes_column='nFeature_RNA',
         mito_fraction_column='percent.mt',
-        allow_float=True)
+        allow_float=True)\
+    .qc(subset=False,
+        QC_column='_passed_QC',
+        remove_doublets=True,
+        batch_column='sample',
+        allow_float=True)\
+    .with_columns_obs(
+        pl.col('_passed_QC') &
+        pl.all_horizontal(pl.col(cols).is_not_null()))\
+    .with_uns(QCed=False)
 
 print(sc)
 print(sc.peek_obs())
 print(sc.peek_var())
 
 '''
-SingleCell dataset with 1,214,581 cells (obs), 36,601 genes (var),
+Starting with 1,214,581 cells.
+Filtering to cells with ≤5.0% mitochondrial counts...
+1,174,861 cells remain after filtering to cells with ≤5.0% mitochondrial counts.
+Filtering to cells with ≥100 genes detected (with non-zero count)...
+1,174,861 cells remain after filtering to cells with ≥100 genes detected.
+Filtering to cells with non-zero MALAT1 expression...
+1,174,759 cells remain after filtering to cells with non-zero MALAT1 expression.
+Removing predicted doublets...
+894,168 cells remain after removing predicted doublets.
+
+SingleCell dataset in CSR format with 1,214,581 cells (obs), 36,601 genes (var),
 and 5,827,739,288 non-zero entries (X)
     obs: cell_id, sample, cell_type, cp_score, cond, apoe4_dosage, pmi,
-        age_at_death,
-        sex, nCount_RNA, nFeature_RNA, percent.mt
+         age_at_death, sex, nCount_RNA, nFeature_RNA, percent.mt, _passed_QC
     var: gene_symbol
     uns: QCed, normalized
 
@@ -106,6 +123,7 @@ column        value
  nCount_RNA    20335
  nFeature_RNA  5779
  percent.mt    0.00049176294
+ _passed_QC    true
 
 column       value
  gene_symbol  MIR1302-2HG
@@ -145,18 +163,34 @@ sc = SingleCell(file_data)\
         num_counts_column='nCount_RNA',
         num_genes_column='nFeature_RNA',
         mito_fraction_column='percent.mt',
-        allow_float=True)
+        allow_float=True)\
+    .qc(subset=False,
+        QC_column='_passed_QC',
+        remove_doublets=True,
+        batch_column='sample',
+        allow_float=True)\
+    .with_uns(QCed=False)
 
 print(sc)
 print(sc.peek_obs())
 print(sc.peek_var())
 
 '''
-SingleCell dataset with 9,697,974 cells (obs), 40,352 genes (var),
+Starting with 9,697,974 cells.
+Filtering to cells with ≤5.0% mitochondrial counts...
+9,443,200 cells remain after filtering to cells with ≤5.0% mitochondrial counts.
+Filtering to cells with ≥100 genes detected (with non-zero count)...
+9,443,200 cells remain after filtering to cells with ≥100 genes detected.
+Filtering to cells with non-zero MALAT1 expression...
+9,443,163 cells remain after filtering to cells with non-zero MALAT1 expression.
+Removing predicted doublets...
+8,404,556 cells remain after removing predicted doublets.
+
+Adding a Boolean column, obs['_passed_QC'], indicating which cells passed QC...
+SingleCell dataset in CSR format with 9,697,974 cells (obs), 40,352 genes (var),
 and 18,830,591,942 non-zero entries (X)
     obs: cell_id, sample, donor, cytokine, cond, cell_type, nCount_RNA,
-    nFeature_RNA,
-         percent.mt
+         nFeature_RNA, percent.mt, _passed_QC
     var: gene_symbol
     uns: QCed, normalized
 
@@ -170,6 +204,7 @@ column        value
  nCount_RNA    4700
  nFeature_RNA  2236
  percent.mt    0.011914894
+ _passed_QC    true
 
 column       value
  gene_symbol  TSPAN6

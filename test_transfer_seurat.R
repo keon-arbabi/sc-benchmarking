@@ -11,7 +11,6 @@ DATASET_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_ACC <- args[4]
-INPUT_PATH_DOUBLET <- args[5]
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATASET_NAME))
@@ -21,7 +20,7 @@ system_info()
 
 cat("--- Params ---\n")
 cat("seurat transfer\n")
-cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
+cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(silent = FALSE)
 
@@ -34,14 +33,8 @@ timers$with_timer("Load data", {
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-timers$with_timer("Quality control", {
-  data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
-  data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
-})
-
-doublet_df <- read.csv(INPUT_PATH_DOUBLET)
-doublets <- doublet_df$cell_id[doublet_df$is_doublet]
-data <- subset(data, cells = setdiff(colnames(data), doublets))
+cells_keep <- colnames(data)[as.logical(data@meta.data[["_passed_QC"]])]
+data <- subset(data, cells = cells_keep)
 
 timers$with_timer("Split data", {
   if (DATASET_NAME == 'SEAAD') {

@@ -11,30 +11,20 @@ warnings.filterwarnings("ignore")
 DATASET_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
-INPUT_PATH_DOUBLET = sys.argv[4]
 
 if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
     print('scanpy de')
-    print(f'{DATASET_NAME=}')
+    print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(silent=False)
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
 
-    with timers('Quality control'):
-        data.var['mt'] = data.var_names.str.startswith('MT-')
-        sc.pp.calculate_qc_metrics(
-            data, qc_vars=['mt'], inplace=True, log1p=True)
-        sc.pp.filter_cells(data, min_genes=200)
-        sc.pp.filter_genes(data, min_cells=3)
-
-    doublet_df = pl.read_csv(INPUT_PATH_DOUBLET)
-    doublets = doublet_df.filter(pl.col('is_doublet'))['cell_id'].to_list()
-    data = data[~data.obs_names.isin(doublets)].copy()
+    data = data[data.obs['_passed_QC']].copy()
 
     with timers('Data transformation'):
         sc.pp.normalize_total(data)

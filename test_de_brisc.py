@@ -16,7 +16,7 @@ if __name__ == '__main__':
     system_info()
     print('--- Params ---')
     print('brisc de')
-    print(f'{DATASET_NAME=}')
+    print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(silent=False)
@@ -24,19 +24,7 @@ if __name__ == '__main__':
     with timers('Load data'):
         data_sc = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
-    with timers('Quality control'):
-        data_sc = data_sc.qc(
-            subset=False,
-            remove_doublets=False,
-            allow_float=True,
-            verbose=False)
-
-    with timers('Doublet detection'):
-        data_sc = data_sc.find_doublets(batch_column='sample')
-
-    with timers('Quality control'):
-        data_sc = data_sc.filter_obs(
-            pl.col('doublet').not_() & pl.col('passed_QC'))
+    data_sc = data_sc.filter_obs(pl.col('_passed_QC'))
 
     with timers('Data transformation'):
         data_pb = data_sc.pseudobulk('sample', 'cell_type')

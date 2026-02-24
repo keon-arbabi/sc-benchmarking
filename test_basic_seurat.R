@@ -1,9 +1,6 @@
 suppressPackageStartupMessages({
   library(BPCells)
   library(Seurat)
-  library(SingleCellExperiment)
-  library(scDblFinder)
-  library(BiocParallel)
   library(ggplot2)
 })
 
@@ -15,15 +12,11 @@ DATASET_NAME <- ARGS[1]
 DATA_PATH <- ARGS[2]
 OUTPUT_PATH_TIME <- ARGS[3]
 OUTPUT_PATH_EMBEDDING <- ARGS[4]
-OUTPUT_PATH_DOUBLET <- ARGS[5]
-
-DATASET_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw_50K.h5ad'
 
 system_info()
 cat("--- Params ---\n")
 cat("seurat basic\n")
-cat(sprintf("DATASET_NAME=%s\n", DATASET_NAME))
+cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(silent = FALSE)
 
@@ -41,32 +34,8 @@ timers$with_timer("Load data", {
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-timers$with_timer("Quality control", {
-  data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
-  data <- subset(data, subset = nFeature_RNA > 200 & percent.mt < 5)
-})
-
-timers$with_timer("Doublet detection", {
-  counts_full <- LayerData(data, assay = "RNA", layer = "counts")
-  bp <- MulticoreParam(workers = 120, RNGseed = 123)
-  doublet_results <- do.call(rbind, lapply(unique(data$sample), function(s) {
-    cells <- colnames(data)[data$sample == s]
-    counts <- as(counts_full[, cells], "dgCMatrix")
-    sce <- scDblFinder(
-      SingleCellExperiment(assays = list(counts = counts)),
-      BPPARAM = bp,
-      verbose = FALSE)
-    data.frame(
-      cell_id = colnames(sce),
-      doublet_score = sce$scDblFinder.score,
-      is_doublet = sce$scDblFinder.class == "doublet")
-  }))
-  bpstop(bp)
-  doublets <- doublet_results$cell_id[doublet_results$is_doublet]
-  data <- subset(data, cells = setdiff(colnames(data), doublets))
-})
-
-write.csv(doublet_results, OUTPUT_PATH_DOUBLET, row.names = FALSE)
+cells_keep <- colnames(data)[as.logical(data@meta.data[["_passed_QC"]])]
+data <- subset(data, cells = cells_keep)
 
 timers$with_timer("Normalization", {
   data <- NormalizeData(
@@ -84,7 +53,7 @@ timers$with_timer("PCA", {
 })
 
 timers$with_timer("Nearest neighbors", {
-  pca_mat <- Embeddings(data, "pca")[, 1:10]
+  pca_mat <- Embeddings(data, "pca")
   knn <- knn_hnsw(pca_mat, k = 20)
   snn <- knn_to_snn_graph(knn)
 })
@@ -133,7 +102,7 @@ timers_df$dataset <- DATASET_NAME
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
 unlink(bpcells_dir, recursive = TRUE)
-rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata)
+rm(data, markers, timers, timers_df, mat, mat_disk, obs_metadata, cells_keep)
 gc()
 
 cat("--- Completed successfully ---\n")

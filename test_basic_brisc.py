@@ -11,14 +11,13 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
-OUTPUT_PATH_DOUBLET = sys.argv[6]
 
 if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
     print('brisc basic')
-    print(f'{DATASET_NAME=}')
+    print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(silent=False)
@@ -26,24 +25,7 @@ if __name__ == '__main__':
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
-    with timers('Quality control'):
-        data = data.qc(
-            subset=False,
-            remove_doublets=False,
-            allow_float=True,
-            verbose=False)
-
-    with timers('Doublet detection'):
-        data = data\
-            .find_doublets(batch_column='sample')\
-            .with_columns_obs(
-                pl.col('passed_QC') & pl.col('doublet').not_())
-
-    pl.DataFrame({
-        'cell_id': data.obs['cell_id'],
-        'doublet_score': data.obs['doublet_score'],
-        'is_doublet': data.obs['doublet']
-    }).write_csv(OUTPUT_PATH_DOUBLET)
+    data = data.filter_obs(pl.col('_passed_QC'))
 
     with timers('Feature selection'):
         data = data.hvg()
