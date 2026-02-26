@@ -1,4 +1,3 @@
-import gc
 import sys
 import warnings
 import polars as pl
@@ -7,26 +6,34 @@ import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
-DATASET_NAME = sys.argv[1]
+DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_EMBEDDING = sys.argv[4]
 
-if __name__ == '__main__':
+system_info()
+print('--- Params ---')
+print('scanpy basic')
+print(f'{DATA_PATH=}')
 
-    system_info()
-    print('--- Params ---')
-    print('scanpy basic')
-    print(f'{DATA_PATH=}')
+if __name__ == '__main__':
 
     timers = MemoryTimer(silent=False)
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
 
-    data = data[data.obs['_passed_QC']].copy()
+    with timers('Quality control'):
+        data.var['mt'] = data.var_names.str.startswith('MT-')
+        data.var['malat1'] = data.var_names == 'MALAT1'
+        sc.pp.calculate_qc_metrics(
+            data, qc_vars=['mt', 'malat1'], inplace=True)
+        keep = ((data.obs['n_genes_by_counts'].values >= 100) &
+                (data.obs['pct_counts_mt'].values <= 5) &
+                (data.obs['pct_counts_malat1'].values > 0))
+        data = data[keep].copy()
 
     with timers('Normalization'):
         sc.pp.normalize_total(data)
@@ -45,42 +52,42 @@ if __name__ == '__main__':
     with timers('Embedding'):
         sc.tl.umap(data)
 
-    with timers('Clustering (3 res.)'):
+    with timers('Clustering'):
         for res in [0.5, 1.0, 2.0]:
             sc.tl.leiden(
                 data,
                 resolution=res,
-                flavor='igraph',
-                n_iterations=2,
+                flavor='igraph', # future default
+                n_iterations=2, # future default
                 key_added=f'leiden_res_{res:4.2f}')
+
+    with timers('Plot embedding'):
+        sc.pl.umap(
+            data, color='cell_type')
+        plt.savefig(
+            f'sc-benchmarking/figures/scanpy_embedding_{DATA_NAME}.png',
+            bbox_inches='tight',
+            dpi=300)
+
+    with timers('Find markers'):
+        sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
 
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': data.obsm['X_umap'][:, 0],
         'embed_2': data.obsm['X_umap'][:, 1],
-        'cell_type': data.obs['cell_type'].tolist(),
-        'clusters_0.5': data.obs['leiden_res_0.50'].tolist(),
-        'clusters_1.0': data.obs['leiden_res_1.00'].tolist(),
-        'clusters_2.0': data.obs['leiden_res_2.00'].tolist(),
+        'cell_type': data.obs['cell_type'].tolist()
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    with timers('Plot embedding'):
-        sc.pl.umap(data, color='cell_type')
-        plt.savefig(
-            f'sc-benchmarking/figures/scanpy_embedding_{DATASET_NAME}.png',
-            dpi=300,
-            bbox_inches='tight')
-
-    with timers('Find markers'):
-        sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
-
     timers.print_summary(unit='s')
 
-    timers_df = timers.to_dataframe(sort=False, unit='s').with_columns(
-        pl.lit('scanpy').alias('library'),
-        pl.lit('basic').alias('test'),
-        pl.lit(DATASET_NAME).alias('dataset'),)
+    timers_df = timers\
+        .to_dataframe(sort=False, unit='s')\
+        .with_columns(
+            pl.lit('scanpy').alias('library'),
+            pl.lit('basic').alias('test'),
+            pl.lit(DATA_NAME).alias('dataset'))
     timers_df.write_csv(OUTPUT_PATH_TIME)
 
     if not any(timers_df['aborted']):
@@ -88,6 +95,3 @@ if __name__ == '__main__':
 
     print('\n--- Session Info ---')
     sc.logging.print_header()
-
-    del timers, timers_df, data
-    gc.collect()

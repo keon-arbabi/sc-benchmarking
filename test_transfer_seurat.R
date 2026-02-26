@@ -7,13 +7,13 @@ options(future.globals.maxSize = Inf)
 source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
-DATASET_NAME <- args[1]
+DATA_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_ACC <- args[4]
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATASET_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "transfer", paste0("data_", DATA_NAME))
 unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
@@ -33,14 +33,18 @@ timers$with_timer("Load data", {
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-cells_keep <- colnames(data)[as.logical(data@meta.data[["_passed_QC"]])]
-data <- subset(data, cells = cells_keep)
+timers$with_timer("Quality control", {
+  data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+  data <- subset(
+    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & MALAT1 > 0,
+    slot = "counts")
+})
 
 timers$with_timer("Split data", {
-  if (DATASET_NAME == 'SEAAD') {
+  if (DATA_NAME == 'SEAAD') {
     data_ref <- subset(data, subset = cond == 0)
     data_query <- subset(data, subset = cond == 1)
-  } else if (DATASET_NAME == 'PBMC') {
+  } else if (DATA_NAME == 'PBMC') {
     data_ref <- subset(data, subset = cond == 'PBS')
     data_query <- subset(data, subset = cond == 'cytokine')
   }
@@ -63,18 +67,16 @@ timers$with_timer("PCA", {
 })
 
 timers$with_timer("Transfer labels", {
-  anchors <- FindTransferAnchors(
-    reference = data_ref,
-    query = data_query,
-    dims = 1:30,
-    reference.reduction = "pca")
-  predictions <- TransferData(
-    anchorset = anchors,
-    refdata = data_ref$cell_type,
-    dims = 1:30)
-  data_query <- AddMetaData(
-    object = data_query,
-    metadata = predictions)
+    anchors <- FindTransferAnchors(
+      reference = data_ref,
+      query = data_query,
+      reference.reduction = "pca")
+    predictions <- TransferData(
+      anchorset = anchors,
+      refdata = data_ref$cell_type)
+    data_query <- AddMetaData(
+      object = data_query,
+      metadata = predictions)
 })
 
 accuracy_df <- transfer_accuracy(
@@ -86,7 +88,7 @@ timers$print_summary(unit = "s")
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- 'seurat'
 timers_df$test <- 'transfer'
-timers_df$dataset <- DATASET_NAME
+timers_df$dataset <- DATA_NAME
 timers_df$num_threads <- 'single-threaded'
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
@@ -99,6 +101,3 @@ print(sessionInfo())
 
 unlink(bpcells_dir, recursive = TRUE)
 
-rm(data_query, data_ref, anchors, predictions, timers,
-  timers_df, accuracy_df, mat, mat_disk, obs_metadata)
-gc()

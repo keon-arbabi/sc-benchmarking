@@ -1,38 +1,43 @@
 import gc
 import sys
+import warnings
 import polars as pl
 import scanpy as sc
-import warnings
-warnings.filterwarnings('ignore')
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy, print_df
 
-DATASET_NAME = sys.argv[1]
+warnings.filterwarnings('ignore')
+
+DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_ACC = sys.argv[4]
 
-if __name__ == '__main__':
+system_info()
+print('--- Params ---')
+print('scanpy transfer')
+print(f'{DATA_PATH=}')
 
-    system_info()
-    print('--- Params ---')
-    print('scanpy transfer')
-    print(f'{DATA_PATH=}')
+if __name__ == '__main__':
 
     timers = MemoryTimer(silent=False)
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
 
-    data = data[data.obs['_passed_QC']].copy()
+    with timers('Quality control'):
+        data.var['mt'] = data.var_names.str.startswith('MT-')
+        data.var['malat1'] = data.var_names == 'MALAT1'
+        sc.pp.calculate_qc_metrics(
+            data, qc_vars=['mt', 'malat1'], inplace=True)
+        keep = ((data.obs['n_genes_by_counts'].values >= 100) &
+                (data.obs['pct_counts_mt'].values <= 5) &
+                (data.obs['pct_counts_malat1'].values > 0))
+        data = data[keep].copy()
 
     with timers('Split data'):
-        if DATASET_NAME == 'SEAAD':
-            data_ref = data[data.obs['cond'] == 0].copy()
-            data_query = data[data.obs['cond'] == 1].copy()
-        elif DATASET_NAME == 'PBMC':
-            data_ref = data[data.obs['cond'] == 'PBS'].copy()
-            data_query = data[data.obs['cond'] == 'cytokine'].copy()
+        data_ref = data[data.obs['cond'] == 0].copy()
+        data_query = data[data.obs['cond'] == 1].copy()
 
     del data; gc.collect()
 
@@ -57,13 +62,17 @@ if __name__ == '__main__':
     data_query.obs['cell_type_orig'] = data_query.obs['cell_type'].copy()
 
     with timers('Transfer labels'):
-        sc.pp.neighbors(data_ref)
+        sc.pp.neighbors(data_ref, n_neighbors=20)
         sc.tl.ingest(
-            data_query, data_ref, obs='cell_type', embedding_method='pca')
+            data_query,
+            data_ref,
+            obs='cell_type',
+            embedding_method='pca')
 
-    accuracy_df = transfer_accuracy(
-        data_query.obs, 'cell_type_orig', 'cell_type')
-    accuracy_df.write_csv(OUTPUT_PATH_ACC)
+    print('--- Transfer Accuracy ---')
+    transfer_accuracy(
+        data_query.obs, 'cell_type', 'cell_type_transferred')\
+    .write_csv(OUTPUT_PATH_ACC)
 
     timers.print_summary(unit='s')
 
@@ -71,7 +80,7 @@ if __name__ == '__main__':
         .with_columns(
             pl.lit('scanpy').alias('library'),
             pl.lit('transfer').alias('test'),
-            pl.lit(DATASET_NAME).alias('dataset'))
+            pl.lit(DATA_NAME).alias('dataset'))
     timers_df.write_csv(OUTPUT_PATH_TIME)
 
     if not any(timers_df['aborted']):
@@ -79,6 +88,3 @@ if __name__ == '__main__':
 
     print('\n--- Session Info ---')
     sc.logging.print_header()
-
-    del timers, timers_df, data_query, data_ref
-    gc.collect()

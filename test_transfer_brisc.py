@@ -6,35 +6,31 @@ from single_cell import SingleCell
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 
-DATASET_NAME = sys.argv[1]
+DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_ACC = sys.argv[5]
 
-if __name__ == '__main__':
+system_info()
+print('--- Params ---')
+print('brisc transfer')
+print(f'{DATA_PATH=}')
+print(f'{NUM_THREADS=}')
 
-    system_info()
-    print('--- Params ---')
-    print('brisc transfer')
-    print(f'{DATA_PATH=}')
-    print(f'{NUM_THREADS=}')
+if __name__ == '__main__':
 
     timers = MemoryTimer(silent=False)
 
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
-    data = data.filter_obs(pl.col('_passed_QC'))
+    with timers('Quality control'):
+        data = data.qc(subset=False, allow_float=True)
 
     with timers('Split data'):
         data = dict(data.split_by_obs('cond'))
-        if DATASET_NAME == 'SEAAD':
-            data_ref = data.pop(0)
-            data_query = data.pop(1)
-        elif DATASET_NAME == 'PBMC':
-            data_ref = data.pop('PBS')
-            data_query = data.pop('cytokine')
+        data_ref, data_query  = data.pop(0), data.pop(1)
 
     del data; gc.collect()
 
@@ -54,9 +50,9 @@ if __name__ == '__main__':
             data_ref, 'cell_type', cell_type_column='cell_type_transferred')
 
     print('--- Transfer Accuracy ---')
-    accuracy_df = transfer_accuracy(
-        data_query.obs, 'cell_type', 'cell_type_transferred')
-    accuracy_df.write_csv(OUTPUT_PATH_ACC)
+    transfer_accuracy(
+        data_query.obs, 'cell_type', 'cell_type_transferred')\
+    .write_csv(OUTPUT_PATH_ACC)
 
     timers.print_summary(unit='s')
 
@@ -64,13 +60,9 @@ if __name__ == '__main__':
         .with_columns(
             pl.lit('brisc').alias('library'),
             pl.lit('transfer').alias('test'),
-            pl.lit(DATASET_NAME).alias('dataset'),
-            pl.lit('single-threaded' if NUM_THREADS == 1 else 'multi-threaded')
-            .alias('num_threads'))
+            pl.lit(DATA_NAME).alias('dataset'),
+            pl.lit(NUM_THREADS).alias('num_threads'))
     timers_df.write_csv(OUTPUT_PATH_TIME)
 
     if not any(timers_df['aborted']):
         print('--- Completed successfully ---')
-
-    del timers, timers_df, data_query, data_ref
-    gc.collect()

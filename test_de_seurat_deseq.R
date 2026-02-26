@@ -8,12 +8,12 @@ options(future.globals.maxSize = Inf)
 source("sc-benchmarking/utils_local.R")
 
 args = commandArgs(trailingOnly=TRUE)
-DATASET_NAME <- args[1]
+DATA_NAME <- args[1]
 DATA_PATH <- args[2]
 OUTPUT_PATH_TIME <- args[3]
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATASET_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATA_NAME))
 unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
@@ -28,17 +28,22 @@ timers$with_timer("Load data", {
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
   write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
   mat <- open_matrix_dir(dir = bpcells_dir)
+  # custom reader required
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 
-cells_keep <- colnames(data)[as.logical(data@meta.data[["_passed_QC"]])]
-data <- subset(data, cells = cells_keep)
+timers$with_timer("Quality control", {
+  data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+  data <- subset(
+    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & MALAT1 > 0,
+    slot = "counts")
+})
 
-if (DATASET_NAME == "SEAAD") {
+if (DATA_NAME == "SEAAD") {
   data$cond <- ifelse(data$cond == 1, "AD", "Control")
 
-  timers$with_timer("Data transformation", {
+  timers$with_timer("Pseudobulk", {
     data <- AggregateExpression(
       data,
       assays = "RNA",
@@ -61,20 +66,16 @@ if (DATASET_NAME == "SEAAD") {
     de <- do.call(rbind, de_list)
   })
 
-} else if (DATASET_NAME == "PBMC") {
+} else if (DATA_NAME == "PBMC") {
   data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
 
-  timers$with_timer("Data transformation", {
-    cell_groups <- paste(data$cytokine, data$sample, data$cell_type, sep = "_")
-    mat <- GetAssayData(data, layer = "counts")
-    pb_mat <- pseudobulk_matrix(mat, cell_groups, method = "sum")
-    pb_meta <- data@meta.data %>%
-      mutate(group = cell_groups) %>%
-      distinct(group, .keep_all = TRUE)
-    rownames(pb_meta) <- pb_meta$group
-    pb_meta <- pb_meta[colnames(pb_mat), ]
-    data <- CreateSeuratObject(counts = pb_mat, meta.data = pb_meta)
-    data <- NormalizeData(data, verbose = FALSE)
+  timers$with_timer("Pseudobulk", {
+    data <- AggregateExpression(
+      data,
+      assays = "RNA",
+      return.seurat = TRUE,
+      group.by = c("cytokine", "sample", "cell_type"),
+      verbose = FALSE)
   })
 
   timers$with_timer("Differential expression", {
@@ -90,14 +91,14 @@ if (DATASET_NAME == "SEAAD") {
     }
     de <- do.call(rbind, de_list)
   })
-}
+} 
 
 timers$print_summary(unit = "s")
 
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- "seurat"
 timers_df$test <- "de_deseq"
-timers_df$dataset <- DATASET_NAME
+timers_df$dataset <- DATA_NAME
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
 
 if (!any(timers_df$aborted)) {
@@ -108,5 +109,3 @@ cat("\n--- Session Info ---\n")
 print(sessionInfo())
 
 unlink(bpcells_dir, recursive = TRUE)
-rm(data, de, de_list, timers, timers_df, mat, mat_disk, obs_metadata)
-gc()

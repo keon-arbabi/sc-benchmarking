@@ -153,31 +153,17 @@ ggsave(
 
 op_order <- list(
   basic = c("Load data", "Quality control",
-    "Doublet detection", "Normalization",
-    "Feature selection", "PCA",
+    "Normalization", "Feature selection", "PCA",
     "Nearest neighbors",
     "Clustering (3 res.)", "Embedding",
     "Find markers"),
-  transfer = c("Load data", "Quality control",
-    "Doublet detection", "Split data",
+  transfer = c("Load data", "Split data",
     "Normalization", "Feature selection",
     "PCA", "Transfer labels"),
-  de = c("Load data", "Quality control",
-    "Doublet detection", "Data transformation",
+  de = c("Load data", "Data transformation",
     "Normalization", "Differential expression"))
 
-basic_dd <- prepared %>%
-  filter(workflow == "basic",
-    operation == "Doublet detection",
-    group %in% c("scanpy", "Seurat"))
-
-dd_rows <- c("transfer", "de") %>%
-  map(\(wf) mutate(basic_dd,
-    workflow = factor(wf,
-      levels = names(wf_lab)))) %>%
-  bind_rows()
-
-steps <- bind_rows(prepared, dd_rows) %>%
+steps <- prepared %>%
   mutate(
     duration_s = duration,
     duration = if_else(dataset == "PBMC",

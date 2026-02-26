@@ -13,25 +13,23 @@ PYTHON = '/home/wainberg/bin/python3.13'
 RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
 
 DATASETS = {
-    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
-    # 'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    # 'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
+    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
 }
 
 # (file, tool, task, thread_params)
 SCRIPTS = [
-    # ('test_qc_brisc.py', 'brisc', 'qc', [-1, 1]),
-    # ('test_qc_scanpy.py', 'scanpy', 'qc', None),
-    # ('test_qc_seurat.R', 'seurat', 'qc', None),
-    # ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     # ('test_basic_scanpy.py', 'scanpy', 'basic', None),
     # ('test_basic_seurat.R', 'seurat', 'basic', None),
     # ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
-    # ('test_de_scanpy.py', 'scanpy', 'de', None),
+    # ('test_de_scanpy_wilcox.py', 'scanpy', 'de_wilcox', None),
+    # ('test_de_scanpy_deseq.py', 'scanpy', 'de_deseq', None),
     # ('test_de_seurat_deseq.R', 'seurat', 'de_deseq', None),
     # ('test_de_seurat_wilcox.R', 'seurat', 'de_wilcox', None),
-    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
-    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    # ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
+    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
+    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
 ]
 
 if __name__ == '__main__':
@@ -43,8 +41,8 @@ if __name__ == '__main__':
     for script_file, tool, task, thread_params in SCRIPTS:
         interpreter = RSCRIPT if script_file.endswith('.R') else PYTHON
         script_path = os.path.join(WORK_DIR, script_file)
-        is_qc = task == 'qc'
         is_basic = task == 'basic'
+        is_de = task.startswith('de')
         is_transfer = task == 'transfer'
 
         for d_name, d_path in DATASETS.items():
@@ -66,12 +64,12 @@ if __name__ == '__main__':
                 if threads is not None:
                     cmd.append(str(threads))
                 cmd.append(os.path.join(OUTPUT_DIR, f'{job_name}_timer.csv'))
-                if is_qc:
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{tool}_{d_name}_doublets.csv'))
                 if is_basic:
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{job_name}_embedding.csv'))
+                if is_de:
+                    cmd.append(os.path.join(
+                        OUTPUT_DIR, f'{job_name}_de.csv'))
                 if is_transfer:
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{job_name}_accuracy.csv'))
@@ -83,7 +81,7 @@ if __name__ == '__main__':
 
                 job_id = run_slurm(
                     full_cmd, job_name=job_name, log_file=log,
-                    # account='def-wainberg',
-                    account='rrg-shreejoy',
+                    account='def-wainberg',
+                    # account='rrg-shreejoy',
                     CPUs=192,
                     hours=24)

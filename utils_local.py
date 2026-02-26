@@ -28,9 +28,7 @@ class MemoryTimer:
         self.silent = silent
 
     def __call__(self, message: str) -> ContextManager[None]:
-        start = default_timer()
         pid = os.getpid()
-
         @contextmanager
         def timer():
             if not self.silent:
@@ -41,6 +39,7 @@ class MemoryTimer:
                 stdout=subprocess.PIPE, text=True
             )
             time.sleep(STARTUP_DELAY)
+            start = default_timer()
             try:
                 yield
                 aborted = False
@@ -302,25 +301,20 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
         except (NameError, FileNotFoundError):
             pass
 
-# TODO
 def transfer_accuracy(obs, orig_col, trans_col):
     if isinstance(obs, pd.DataFrame):
         obs = pl.from_pandas(obs)
-    df = obs\
-        .with_columns(
-            pl.col([orig_col, trans_col]).cast(pl.String))\
+    groups = obs\
+        .with_columns(pl.col(orig_col, trans_col).cast(pl.String))\
         .group_by(orig_col)\
-        .agg(
-            n_correct=pl.col(orig_col).eq(pl.col(trans_col)).sum(),
-            n_total=pl.len())\
-        .pipe(lambda df: pl.concat([
-            df,
-            df.sum().with_columns(pl.lit('Total').alias(orig_col))]))\
+        .agg(n_correct=pl.col(orig_col).eq(pl.col(trans_col)).sum(),
+             n_total=pl.len())
+    df = pl.concat([
+            groups,
+            groups.sum().with_columns(pl.lit('Total').alias(orig_col))])\
         .with_columns(
             percent_correct=pl.col('n_correct') / pl.col('n_total') * 100)\
-        .sort(
-            pl.when(pl.col(orig_col) == 'Total').then(1).otherwise(0),
-            pl.col(orig_col))\
+        .sort(pl.col(orig_col).eq('Total'), orig_col)\
         .rename({orig_col: 'cell_type'})
     print_df(df)
     return df
@@ -344,7 +338,6 @@ def confusion_matrix_plot(sc_obs, orig_col, trans_col, filename):
         cmap='rocket_r', vmin=0, vmax=1,
         cbar_kws={'shrink': 0.7}
     )
-
     cbar = ax.collections[0].colorbar
     cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1])
     cbar.set_ticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
