@@ -1,7 +1,6 @@
 import os
 import gc
 import sys
-import warnings
 import decoupler as dc
 import polars as pl
 import scanpy as sc
@@ -10,12 +9,14 @@ from pydeseq2.dds import DeseqDataSet, DefaultInference
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-warnings.filterwarnings('ignore')
+# DATA_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# OUTPUT_PATH_TIME = sys.argv[3]
+# OUTPUT_PATH_DE = sys.argv[4]
 
-DATA_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-OUTPUT_PATH_TIME = sys.argv[3]
-OUTPUT_PATH_DE = sys.argv[4]
+DATA_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
+NUM_THREADS = -1
 
 system_info()
 print('--- Params ---')
@@ -45,15 +46,15 @@ if __name__ == '__main__':
 
     del data_sc; gc.collect()
 
+    if DATA_NAME == 'SEAAD':
+        data_pb.obs['cond'] = data_pb.obs['cond'].astype(str)
+
+    elif DATA_NAME == 'PBMC':
+        data_pb = data_pb[data_pb.obs['cytokine'].isin(
+            ['IFN-gamma', 'PBS'])].copy()
+
     with timers('Filter'):
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
-
-        if DATA_NAME == 'SEAAD':
-            data_pb.obs['cond'] = data_pb.obs['cond'].astype(str)
-
-        elif DATA_NAME == 'PBMC':
-            data_pb = data_pb[data_pb.obs['cytokine'].isin(
-                ['IFN-gamma', 'PBS'])].copy()
 
     with timers('Differential expression'):
         inference = DefaultInference(n_cpus=os.cpu_count())
@@ -61,9 +62,10 @@ if __name__ == '__main__':
         de = {}
         for ct in cell_types:
             data_pb_ct = data_pb[data_pb.obs['cell_type'] == ct].copy()
-            dc.pp.filter_by_expr(data_pb_ct, group=None, min_count=10)
 
             if DATA_NAME == 'SEAAD':
+                dc.pp.filter_by_expr(
+                    data_pb_ct, group='cond', min_count=10)
                 dds = DeseqDataSet(
                     adata=data_pb_ct,
                     design_factors=['cond'],
@@ -78,6 +80,8 @@ if __name__ == '__main__':
                 de[ct] = stat_res.results_df
 
             elif DATA_NAME == 'PBMC':
+                dc.pp.filter_by_expr(
+                    data_pb_ct, group='cytokine', min_count=10)
                 dds = DeseqDataSet(
                     adata=data_pb_ct,
                     design_factors=['cytokine'],
@@ -100,7 +104,7 @@ if __name__ == '__main__':
             'p_value_adj': df['padj'].values,
         })
         for ct, df in de.items()])
-    de_df.write_csv(OUTPUT_PATH_DE)
+    # de_df.write_csv(OUTPUT_PATH_DE)
 
     timers.print_summary(unit='s')
 
@@ -108,9 +112,9 @@ if __name__ == '__main__':
         .to_dataframe(sort=False, unit='s')\
         .with_columns(
             pl.lit('scanpy').alias('library'),
-            pl.lit('de_deseq').alias('test'),
+            pl.lit('de').alias('test'),
             pl.lit(DATA_NAME).alias('dataset'),)
-    timers_df.write_csv(OUTPUT_PATH_TIME)
+    # timers_df.write_csv(OUTPUT_PATH_TIME)
 
     if not any(timers_df['aborted']):
         print('--- Completed successfully ---')

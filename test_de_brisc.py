@@ -33,14 +33,16 @@ if __name__ == '__main__':
 
     del data_sc; gc.collect()
 
+    if DATA_NAME == 'PBMC':
+        data_pb = data_pb.filter_obs(
+            pl.col('cytokine').is_in(['IFN-gamma', 'PBS']))
+
     with timers('Filter'):
         if DATA_NAME == 'SEAAD':
             data_pb = data_pb.qc('cond', verbose=False)
 
         elif DATA_NAME == 'PBMC':
-            data_pb = data_pb\
-                .filter_obs(pl.col('cytokine').is_in(['IFN-gamma', 'PBS']))\
-                .qc('cytokine', verbose=False)
+            data_pb = data_pb.qc('cytokine', verbose=False)
 
     with timers('Differential expression'):
         if DATA_NAME == 'SEAAD':
@@ -67,8 +69,8 @@ if __name__ == '__main__':
 
     de_df = de.table\
         .select('cell_type', 'gene', 'logFC', 'p', 'FDR')\
-        .rename({'p': 'p_value', 'FDR': 'p_value_adj'})\
-    de_df.write_csv(OUTPUT_PATH_DE)
+        .rename({'p': 'p_value', 'FDR': 'p_value_adj'})
+    # de_df.write_csv(OUTPUT_PATH_DE)
 
     timers.print_summary(unit='s')
 
