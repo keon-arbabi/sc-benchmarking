@@ -70,7 +70,7 @@ if __name__ == '__main__':
     de_df = de.table\
         .select('cell_type', 'gene', 'logFC', 'p', 'FDR')\
         .rename({'p': 'p_value', 'FDR': 'p_value_adj'})
-    # de_df.write_csv(OUTPUT_PATH_DE)
+    de_df.write_csv(OUTPUT_PATH_DE)
 
     timers.print_summary(unit='s')
 

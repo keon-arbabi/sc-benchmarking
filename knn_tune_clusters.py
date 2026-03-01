@@ -22,7 +22,7 @@ K = 20
 # num_clusters 1,2,4,8,16 * sq root n
 
 MIN_CLUSTERS_SEARCHED = [10, 20, 50, 100]
-KMEANS_ITERS = [2]
+KMEANS_ITERS = [1, 2, 4]
 NUM_THREADS = [1, -1]
 
 def log(msg):

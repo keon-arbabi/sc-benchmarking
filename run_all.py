@@ -13,21 +13,21 @@ PYTHON = '/home/wainberg/bin/python3.13'
 RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
 
 DATASETS = {
-    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
+    # 'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
     'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
 }
 
 # (file, tool, task, thread_params)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
-    ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    ('test_basic_seurat.R', 'seurat', 'basic', None),
-    ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
-    ('test_de_scanpy.py', 'scanpy', 'de_deseq', None),
-    ('test_de_seurat.R', 'seurat', 'de_deseq', None),
-    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
-    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    # ('test_basic_scanpy.py', 'scanpy', 'basic', None),
+    # ('test_basic_seurat.R', 'seurat', 'basic', None),
+    # ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
+    # ('test_de_scanpy.py', 'scanpy', 'de_deseq', None),
+    # ('test_de_seurat.R', 'seurat', 'de_deseq', None),
+    # ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
+    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
+    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
 ]
 
 if __name__ == '__main__':

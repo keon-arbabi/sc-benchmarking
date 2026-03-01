@@ -1,12 +1,9 @@
 import gc
 import sys
-import warnings
 import polars as pl
 import scanpy as sc
 sys.path.append('sc-benchmarking')
-from utils_local import MemoryTimer, system_info, transfer_accuracy, print_df
-
-warnings.filterwarnings('ignore')
+from utils_local import MemoryTimer, system_info, transfer_accuracy
 
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
@@ -55,14 +52,12 @@ if __name__ == '__main__':
         data_query = data_query[:, hvg_genes].copy()
 
     with timers('PCA'):
-        sc.pp.scale(data_ref)
-        sc.pp.scale(data_query)
         sc.pp.pca(data_ref)
 
     data_query.obs['cell_type_orig'] = data_query.obs['cell_type'].copy()
 
     with timers('Transfer labels'):
-        sc.pp.neighbors(data_ref, n_neighbors=20)
+        sc.pp.neighbors(data_ref)
         sc.tl.ingest(
             data_query,
             data_ref,
@@ -71,7 +66,7 @@ if __name__ == '__main__':
 
     print('--- Transfer Accuracy ---')
     transfer_accuracy(
-        data_query.obs, 'cell_type', 'cell_type_transferred')\
+        data_query.obs, 'cell_type_orig', 'cell_type')\
     .write_csv(OUTPUT_PATH_ACC)
 
     timers.print_summary(unit='s')

@@ -38,22 +38,19 @@ if __name__ == '__main__':
 
     with timers('Nearest neighbors'):
         data = data\
-            .neighbors(
-                min_clusters_searched=100,
-                num_kmeans_iterations=2)\
+            .neighbors()\
             .shared_neighbors()
 
     with timers('Clustering'):
         data = data.cluster(resolution=[0.5, 1.0, 2.0])
 
     with timers('Embedding'):
-        data = data.embed(QC_column=None)
+        data = data.embed()
 
     with timers('Plot embedding'):
         data.plot_embedding(
             'cell_type',
-            f'sc-benchmarking/figures/brisc_embedding_{DATA_NAME}.png',
-            cells_to_plot_column=None)
+            f'sc-benchmarking/figures/brisc_embedding_{DATA_NAME}.png')
 
     with timers('Find markers'):
         markers = data.find_markers('cell_type')

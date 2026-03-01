@@ -41,13 +41,8 @@ timers$with_timer("Quality control", {
 })
 
 timers$with_timer("Split data", {
-  if (DATA_NAME == 'SEAAD') {
-    data_ref <- subset(data, subset = cond == 0)
-    data_query <- subset(data, subset = cond == 1)
-  } else if (DATA_NAME == 'PBMC') {
-    data_ref <- subset(data, subset = cond == 'PBS')
-    data_query <- subset(data, subset = cond == 'cytokine')
-  }
+  data_ref <- subset(data, subset = cond == 0)
+  data_query <- subset(data, subset = cond == 1)
 })
 
 rm(data); gc()

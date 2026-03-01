@@ -9,14 +9,10 @@ from pydeseq2.dds import DeseqDataSet, DefaultInference
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-# DATA_NAME = sys.argv[1]
-# DATA_PATH = sys.argv[2]
-# OUTPUT_PATH_TIME = sys.argv[3]
-# OUTPUT_PATH_DE = sys.argv[4]
-
-DATA_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
-NUM_THREADS = -1
+DATA_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH_TIME = sys.argv[3]
+OUTPUT_PATH_DE = sys.argv[4]
 
 system_info()
 print('--- Params ---')
@@ -104,7 +100,7 @@ if __name__ == '__main__':
             'p_value_adj': df['padj'].values,
         })
         for ct, df in de.items()])
-    # de_df.write_csv(OUTPUT_PATH_DE)
+    de_df.write_csv(OUTPUT_PATH_DE)
 
     timers.print_summary(unit='s')
 
@@ -114,7 +110,7 @@ if __name__ == '__main__':
             pl.lit('scanpy').alias('library'),
             pl.lit('de').alias('test'),
             pl.lit(DATA_NAME).alias('dataset'),)
-    # timers_df.write_csv(OUTPUT_PATH_TIME)
+    timers_df.write_csv(OUTPUT_PATH_TIME)
 
     if not any(timers_df['aborted']):
         print('--- Completed successfully ---')

@@ -65,17 +65,17 @@ Benchmarks single-cell RNA-seq analysis tools to compare **BRISC** vs **Scanpy**
 
 ## Memory Measurement
 
-Memory is tracked via a background shell process that polls at 50ms intervals:
+Memory is tracked via a background shell process (`monitor_mem.sh`) that polls `/proc/[pid]/smaps_rollup` at 50ms intervals for the main process and all direct child processes, summing PSS (Proportional Set Size) across the tree. Peak values are recorded per operation.
 
-- Reads PSS (Proportional Set Size) from /proc/[pid]/smaps_rollup for the main process and all child processes
-- Tracks /dev/shm usage delta to capture multiprocessing shared memory allocations
-- Reports total = PSS sum + shared memory delta
-- Also calculates percentage of total system memory
-- Peak values across all samples are recorded per operation
+**Why PSS sum across the process tree is the correct approach:**
 
-PSS is more accurate than RSS for shared memory scenarios since it divides shared pages proportionally among processes.
+PSS distributes shared memory proportionally: when N processes map the same segment of size S, each is attributed S/N. Summing PSS across all N processes yields exactly S — one full copy, no over- or under-counting. This directly answers *"what is the system memory cost of running this tool?"* consistently across all tools:
 
-TODO: Track across time?
+- **Scanpy / Seurat** (single-process): PSS sum = their full memory footprint.
+- **BRISC num_threads=1**: same, single process.
+- **BRISC num_threads=-1**: PSS sum = shared data (one copy, correctly attributed across main + workers) + worker private overhead. Worker processes occupy real memory even when idle between operations, so counting them is correct.
+
+An earlier implementation also added a `/dev/shm` usage delta on top of the PSS sum, intended to capture shared memory that might be undercounted. This was based on a per-process PSS view where proportional attribution dilutes shared memory toward zero for a single process. However, because PSS is summed across the *entire* process tree, shared memory is already fully accounted for — adding the delta double-counts it, inflating multi-threaded BRISC memory by ~2× (observed: ~412 GiB vs the correct ~210 GiB for PBMC). The delta was removed; PSS sum alone is sufficient and correct.
 
 
 ---
