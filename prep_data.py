@@ -43,8 +43,9 @@ sc = sc\
         'Continuous Pseudo-progression Score': 'cp_score',
         'Age at Death': 'age_at_death', 'PMI': 'pmi', 'Sex': 'sex'})\
     .with_columns_obs(
-        pl.when(pl.col('cond') == 'Dementia').then(1)
-            .when(pl.col('cond') == 'No dementia').then(0)
+        pl.when(pl.col('Consensus Clinical Dx (choice=Alzheimers disease)')
+            .eq('Checked')).then(1)
+            .otherwise(0)
             .alias('cond'),
         pl.col('apoe4_dosage')
             .cast(pl.String)

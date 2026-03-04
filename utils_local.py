@@ -2,10 +2,8 @@ import gc
 import io
 import os
 import sys
-import time
 import socket
 import subprocess
-import warnings
 import numpy as np
 import polars as pl
 import pandas as pd
@@ -19,7 +17,6 @@ from tabulate import tabulate
 _MONITOR_MEM_SH_PATH = os.path.join(
     os.path.dirname(__file__), 'monitor_mem.sh')
 
-STARTUP_DELAY = 0.10
 POLLING_INTERVAL = '0.05'
 
 class MemoryTimer:
@@ -38,27 +35,33 @@ class MemoryTimer:
                 [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
                 stdout=subprocess.PIPE, text=True
             )
-            time.sleep(STARTUP_DELAY)
+            monitor.stdout.readline()  # sync: wait for first sample
             start = default_timer()
+            aborted = False
             try:
                 yield
-                aborted = False
             except Exception as e:
                 aborted = True
                 raise e
             finally:
                 duration = default_timer() - start
                 # Stop monitor and get output
-                subprocess.run(['kill', str(monitor.pid)])
-                output, _ = monitor.communicate()
-                # Parse memory readings
+                monitor.terminate()
                 try:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", UserWarning)
-                        data = np.loadtxt(io.StringIO(output), delimiter=',')
-                except (ValueError, UserWarning):
-                     # Empty output default
+                    output, _ = monitor.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    monitor.kill()
+                    output, _ = monitor.communicate()
+                # Parse memory readings
+                output = output.strip()
+                if not output:
                     data = np.array([[0.0, 0.0]])
+                else:
+                    try:
+                        data = np.loadtxt(
+                            io.StringIO(output), delimiter=',')
+                    except ValueError:
+                        data = np.array([[0.0, 0.0]])
 
                 if data.size == 0:
                     data = np.array([[0.0, 0.0]])
@@ -183,28 +186,21 @@ class MemoryTimer:
                 raise ValueError(f'Unsupported unit: {unit}')
             conv = conversions[unit]
 
-        ops, durs, aborts, pcts = [], [], [], []
-        memory, memory_unit, percent_mem = [], [], []
+        rows = [
+            {
+                'operation': msg,
+                'duration': info['duration'] * conv if unit else info['duration'],
+                'duration_unit': unit or 's',
+                'aborted': info['aborted'],
+                'percentage': (info['duration'] / total * 100) if total else 0,
+                'memory': info['memory'],
+                'memory_unit': 'GiB',
+                'percent_mem': info['%mem'],
+            }
+            for msg, info in items
+        ]
 
-        for msg, info in items:
-            ops.append(msg)
-            durs.append(info['duration'] * conv if unit else info['duration'])
-            aborts.append(info['aborted'])
-            pcts.append((info['duration'] / total * 100) if total else 0)
-            memory.append(info['memory'])
-            memory_unit.append('GiB')
-            percent_mem.append(info['%mem'])
-
-        return pl.DataFrame({
-            'operation': ops,
-            'duration': durs,
-            'duration_unit': [unit or 's'] * len(ops),
-            'aborted': aborts,
-            'percentage': pcts,
-            'memory': memory,
-            'memory_unit': memory_unit,
-            'percent_mem': percent_mem,
-        })
+        return pl.DataFrame(rows)
 
 def print_df(df, num_rows=-1, num_columns=-1):
     with pl.Config(tbl_rows=num_rows, tbl_cols=num_columns):

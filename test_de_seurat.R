@@ -54,9 +54,10 @@ if (DATA_NAME == "SEAAD") {
 # Seurat lacks pseudobulk-level filtering
 
 # BPCells native function required
-# Seurat::AggregateExpression fails with
-# x[i,j] too dense for [CR]sparseMatrix as the resulting
-# pseudobulk matrix exceeds R's dgCMatrix 32-bit index limit
+# Seurat::AggregateExpression internally coerces the input
+# count matrix through dgCMatrix (via as.sparse / %*%),
+# which fails with x[i,j] too dense for [CR]sparseMatrix
+# when the input matrix exceeds R's 32-bit index limit
 timers$with_timer("Pseudobulk", {
   cell_groups <- do.call(paste, c(data@meta.data[group_cols], sep = "_"))
   mat <- GetAssayData(data, layer = "counts")

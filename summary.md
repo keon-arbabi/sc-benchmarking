@@ -65,18 +65,38 @@ Benchmarks single-cell RNA-seq analysis tools to compare **BRISC** vs **Scanpy**
 
 ## Memory Measurement
 
-Memory is tracked via a background shell process (`monitor_mem.sh`) that polls `/proc/[pid]/smaps_rollup` at 50ms intervals for the main process and all direct child processes, summing PSS (Proportional Set Size) across the tree. Peak values are recorded per operation.
+monitor_mem.sh -p PID [-i INTERVAL_SECONDS]
+```
 
-**Why PSS sum across the process tree is the correct approach:**
+It accepts a process ID (`-p`) to watch, and an optional polling interval (`-i`, defaulting to 10ms). It grabs two constants at startup: total system RAM (from `/proc/meminfo`) and the system page size (needed to convert kernel memory units to KB).
 
-PSS distributes shared memory proportionally: when N processes map the same segment of size S, each is attributed S/N. Summing PSS across all N processes yields exactly S — one full copy, no over- or under-counting. This directly answers *"what is the system memory cost of running this tool?"* consistently across all tools:
+---
 
-- **Scanpy / Seurat** (single-process): PSS sum = their full memory footprint.
-- **BRISC num_threads=1**: same, single process.
-- **BRISC num_threads=-1**: PSS sum = shared data (one copy, correctly attributed across main + workers) + worker private overhead. Worker processes occupy real memory even when idle between operations, so counting them is correct.
+### The Core Loop
 
-An earlier implementation also added a `/dev/shm` usage delta on top of the PSS sum, intended to capture shared memory that might be undercounted. This was based on a per-process PSS view where proportional attribution dilutes shared memory toward zero for a single process. However, because PSS is summed across the *entire* process tree, shared memory is already fully accounted for — adding the delta double-counts it, inflating multi-threaded BRISC memory by ~2× (observed: ~412 GiB vs the correct ~210 GiB for PBMC). The delta was removed; PSS sum alone is sufficient and correct.
+Every iteration it does three things: **figure out which processes to measure**, **measure their memory**, then **print the result**.
 
+#### Step 1 — Find child processes
+
+It reads `/proc/[PID]/task/[PID]/children` to get the direct child processes (Python worker processes forked during parallel work). It excludes itself from this list — since the shell script is itself a child of the Python process, it would otherwise accidentally count its own memory.
+
+#### Step 2 — Measure memory (two different strategies)
+
+**No child workers present** (simple case):
+It reads `/proc/[PID]/statm`, which gives RSS (Resident Set Size) — the pages actually loaded in RAM. This is fast and doesn't require any kernel locks, which matters because heavyweight math libraries (BLAS, NumPy) are constantly mapping/unmapping memory in the background.
+
+**Child workers present** (parallel/multiprocessing case):
+It uses `smaps_rollup`, which reports **PSS (Proportional Set Size)** instead. PSS is smarter than RSS for multi-process work — if two processes share a memory page, each one is only charged *half* of it. This way, when you sum PSS across all processes in the tree, shared memory is counted exactly once, not duplicated.
+
+Python's `multiprocessing` module uses `/dev/shm` (shared memory files) for inter-process data. These pages might not show up in any process's PSS yet (workers wrote to them, but the main process hasn't touched them). To catch this, the script tracks a **shmem baseline** at startup, and adds any new system-wide shared memory that isn't already accounted for in the main process's PSS.
+
+#### Step 3 — Print the reading
+```
+47832, 1.23
+
+### Poll Loop Performance
+
+The poll loop must not introduce timing overhead. An earlier version used shell pipelines (`cat | tr | grep` + two `awk` invocations) per iteration — **5 forks per poll**. At a 20 ms interval over a 131-second PCA run this produced ~2620 polls and ~13 seconds of artificial overhead, inflating the monitored/basic timing ratio to 1.097× (target: <1.10×). The fix was to replace every pipeline with bash builtins (`read`, arithmetic expansion, `printf -v`), reducing fork count in the poll loop to zero.
 
 ---
 

@@ -10,6 +10,8 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
+OUTPUT_PATH_PCS = sys.argv[6]
+OUTPUT_PATH_NEIGHBORS = sys.argv[7]
 
 system_info()
 print('--- Params ---')
@@ -55,6 +57,22 @@ if __name__ == '__main__':
     with timers('Find markers'):
         markers = data.find_markers('cell_type')
 
+    # save pcs
+    pcs = data.obsm['PCs']
+    pc_df = pl.DataFrame({
+        f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
+    })
+    pc_df.write_csv(OUTPUT_PATH_PCS)
+
+    # save neighbors
+    neighbors = data.obsm['neighbors']
+    neighbors_df = pl.DataFrame({
+        f'neighbor_{i+1}': neighbors[:, i]
+        for i in range(neighbors.shape[1])
+    })
+    neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
+
+    # save embeddings
     embedding_df = pl.DataFrame({
         'cell_id': data.obs['cell_id'],
         'embed_1': data.obsm['LocalMAP'][:, 0],
@@ -63,8 +81,7 @@ if __name__ == '__main__':
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    timers.print_summary(unit='s')
-
+    # save timings
     timers_df = timers\
         .to_dataframe(sort=False, unit='s')\
         .with_columns(
@@ -73,6 +90,8 @@ if __name__ == '__main__':
             pl.lit(DATA_NAME).alias('dataset'),
             pl.lit(NUM_THREADS).alias('num_threads'))
     timers_df.write_csv(OUTPUT_PATH_TIME)
+
+    timers.print_summary(unit='s')
 
     if not any(timers_df['aborted']):
         print('--- Completed successfully ---')

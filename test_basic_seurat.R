@@ -12,6 +12,8 @@ DATA_NAME <- ARGS[1]
 DATA_PATH <- ARGS[2]
 OUTPUT_PATH_TIME <- ARGS[3]
 OUTPUT_PATH_EMBEDDING <- ARGS[4]
+OUTPUT_PATH_PCS <- ARGS[5]
+OUTPUT_PATH_NEIGHBORS <- ARGS[6]
 
 system_info()
 cat("--- Params ---\n")
@@ -80,8 +82,7 @@ timers$with_timer("Embedding", {
 })
 
 timers$with_timer("Plot embedding", {
-  p <- DimPlot(
-    data, reduction = "umap", group.by = "cell_type")
+  p <- DimPlot(data, reduction = "umap", group.by = "cell_type")
   ggsave(
     paste0("sc-benchmarking/figures/seurat_embedding_", DATA_NAME, ".png"),
     plot = p, dpi = 300, units = "in", width = 10, height = 10)
@@ -91,6 +92,19 @@ timers$with_timer("Find markers", {
   markers <- FindAllMarkers(data, group.by = "cell_type", only.pos = TRUE)
 })
 
+# save pcs
+pcs <- Embeddings(data, "pca")
+pc_df <- as.data.frame(pcs)
+colnames(pc_df) <- paste0("PC_", seq_len(ncol(pcs)))
+write.csv(pc_df, OUTPUT_PATH_PCS, row.names = FALSE)
+
+# save neighbors
+knn_idx <- knn$idx[, -1, drop = FALSE] - 1L
+neighbors_df <- as.data.frame(knn_idx)
+colnames(neighbors_df) <- paste0("neighbor_", seq_len(ncol(knn_idx)))
+write.csv(neighbors_df, OUTPUT_PATH_NEIGHBORS, row.names = FALSE)
+
+# save embeddings
 embedding_df <- data.frame(
   cell_id = colnames(data),
   embed_1 = Embeddings(data, "umap")[, 1],
@@ -99,14 +113,14 @@ embedding_df <- data.frame(
 )
 write.csv(embedding_df, OUTPUT_PATH_EMBEDDING, row.names = FALSE)
 
-timers$print_summary(unit = "s")
-
+# save timings
 timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
 timers_df$library <- "seurat"
 timers_df$test <- "basic"
 timers_df$dataset <- DATA_NAME
-
 write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
+
+timers$print_summary(unit = "s")
 
 cat("--- Completed successfully ---\n")
 

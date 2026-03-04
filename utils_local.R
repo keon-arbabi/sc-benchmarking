@@ -6,7 +6,6 @@ suppressPackageStartupMessages({
 .this_file_path <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e) ".")
 .MONITOR_MEM_SH_PATH <- file.path(.this_file_path, "monitor_mem.sh")
 
-STARTUP_DELAY <- 0.10
 POLLING_INTERVAL <- '0.05'
 
 MemoryTimer = function(silent = TRUE) {
@@ -15,19 +14,27 @@ MemoryTimer = function(silent = TRUE) {
   pid = Sys.getpid()
 
   with_timer = function(message, expr) {
-    start = Sys.time()
     if (!silent) cat(paste0(message, '...\n'))
     result = NULL
     aborted = FALSE
-    # Start monitor with fast sampling
+    # Write monitor output to a temp file instead of a pipe. R is single-
+    # threaded: during long-running expressions (e.g. rep() for 150+ GiB),
+    # the 64 KB pipe buffer fills and the monitor blocks on write, missing
+    # the peak RSS. A file has no such limit.
+    tmpf <- tempfile(pattern = "memmon_", fileext = ".csv")
     curr_process <- process$new(
       command = .MONITOR_MEM_SH_PATH,
       args = c("-p", as.character(pid), "-i", POLLING_INTERVAL),
-      stdout = "|"
+      stdout = tmpf
     )
-    process_pid <- curr_process$get_pid()
-    # Startup delay
-    Sys.sleep(STARTUP_DELAY)
+    # Sync: wait for first sample before timing (file must have content)
+    deadline <- proc.time()[['elapsed']] + 5
+    repeat {
+      if (file.exists(tmpf) && file.info(tmpf)$size > 0) break
+      if (proc.time()[['elapsed']] > deadline) break
+      Sys.sleep(0.005)
+    }
+    start = Sys.time()
 
     # Store error for re-throwing
     error_obj <- NULL
@@ -39,8 +46,13 @@ MemoryTimer = function(silent = TRUE) {
       error_obj <<- e
     }, finally = {
       duration = as.numeric(difftime(Sys.time(), start, units = 'secs'))
-      processx::run("kill", args = c(as.character(process_pid)))
-      stdout_output <- curr_process$read_all_output()
+      curr_process$signal(15L)  # SIGTERM
+      curr_process$wait(timeout = 5000)
+      if (curr_process$is_alive()) curr_process$kill()
+      stdout_output <- tryCatch(
+        paste(readLines(tmpf, warn = FALSE), collapse = "\n"),
+        error = function(e) "")
+      unlink(tmpf)
       con <- textConnection(stdout_output)
       # Handle empty output
       df <- tryCatch({
@@ -89,11 +101,11 @@ MemoryTimer = function(silent = TRUE) {
           '%s %s %s using %.2f GiB\n\n',
           message, status, time_str, new_memory))
       }
+      gc()
     })
     # Re-throw error after cleanup
     if (!is.null(error_obj)) stop(error_obj)
 
-    gc()
     return(invisible(result))
   }
 

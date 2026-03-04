@@ -1,18 +1,24 @@
 import os
-import sys
 import time
 import faiss
 import numpy as np
 import polars as pl
-import scanpy as sc
-from ryp import r, to_r, to_py
-sys.path.append('/home/karbabi')
-from single_cell import SingleCell
 
 OUTPUT_DIR = 'sc-benchmarking/output'
-DATASETS = {
-    'SEAAD': 'single-cell/SEAAD/SEAAD_raw.h5ad',
-    'PBMC': 'single-cell/PBMC/Parse_PBMC_raw.h5ad',
+DATASETS = ['PBMC', 'SEAAD']
+LIBRARIES = {
+    'brisc': {
+        'pcs': 'basic_brisc_{dataset}_-1_pcs.csv',
+        'neighbors': 'basic_brisc_{dataset}_-1_neighbors.csv',
+    },
+    'scanpy': {
+        'pcs': 'basic_scanpy_{dataset}_pcs.csv',
+        'neighbors': 'basic_scanpy_{dataset}_neighbors.csv',
+    },
+    'seurat': {
+        'pcs': 'basic_seurat_{dataset}_pcs.csv',
+        'neighbors': 'basic_seurat_{dataset}_neighbors.csv',
+    },
 }
 K = 20
 BATCH_SIZE = 100_000
@@ -66,74 +72,67 @@ def recall_at_k(gt, approx):
 
 all_summary_rows = []
 
-for dataset_name, data_path in DATASETS.items():
+for dataset_name in DATASETS:
+    for lib_name, paths in LIBRARIES.items():
+        pc_path = os.path.join(
+            OUTPUT_DIR, paths['pcs'].format(dataset=dataset_name))
+        nn_path = os.path.join(
+            OUTPUT_DIR, paths['neighbors'].format(dataset=dataset_name))
 
-    log(f'[{dataset_name}] Preprocessing...')
-    data_sc = SingleCell(data_path, num_threads=-1)\
-        .skip_qc()\
-        .filter_obs(pl.col('_passed_QC'))\
-        .hvg()\
-        .normalize()\
-        .PCA(num_PCs=50)
-    PCs = data_sc.obsm['PCs']
+        if not os.path.exists(pc_path):
+            log(f'[{dataset_name}/{lib_name}] PCs not found: {pc_path}')
+            continue
+        if not os.path.exists(nn_path):
+            log(f'[{dataset_name}/{lib_name}] Neighbors not found: {nn_path}')
+            continue
 
-    gt_cache = f'{OUTPUT_DIR}/knn_exact_{dataset_name}.npz'
-    if os.path.exists(gt_cache):
-        log(f'[{dataset_name}] Load exact KNN...')
-        cached = np.load(gt_cache, allow_pickle=True)
-        gt_neighbors = cached['gt_neighbors']
-        query_idx = cached['query_idx']
-        if query_idx.ndim == 0:
-            query_idx = None
-    else:
-        log(f'[{dataset_name}] Calculate exact KNN...')
-        gt_neighbors, gt_distances, query_idx = exact_knn(
-            PCs, k=K, batch_size=BATCH_SIZE, max_queries=MAX_QUERIES)
-        np.savez(
-            gt_cache,
-            gt_neighbors=gt_neighbors,
-            gt_distances=gt_distances,
-            query_idx=query_idx if query_idx is not None
-            else np.array(None))
+        # Load approximate neighbors
+        log(f'[{dataset_name}/{lib_name}] Loading approximate neighbors...')
+        approx_neighbors = pl.read_csv(nn_path).to_numpy().astype(np.uint32)
+        k_lib = approx_neighbors.shape[1]
 
-    log(f'[{dataset_name}] Neighbors scanpy...')
-    data_ad = data_sc.to_scanpy()
-    sc.pp.neighbors(data_ad, use_rep='PCs', n_pcs=50, n_neighbors=K)
-    scanpy_neighbors = data_ad.obsp['distances'].indices\
-        .reshape(data_ad.n_obs, K + 1)[:, 1:].astype(np.uint32)
+        # Compute or load exact KNN
+        gt_cache = os.path.join(
+            OUTPUT_DIR, f'knn_exact_{lib_name}_{dataset_name}.npz')
+        if os.path.exists(gt_cache):
+            log(f'[{dataset_name}/{lib_name}] Loading cached exact KNN...')
+            cached = np.load(gt_cache, allow_pickle=True)
+            gt_neighbors = cached['gt_neighbors']
+            query_idx = cached['query_idx']
+            if query_idx.ndim == 0:
+                query_idx = None
+        else:
+            log(f'[{dataset_name}/{lib_name}] Loading PCs...')
+            PCs = pl.read_csv(pc_path).to_numpy()
+            PCs = np.ascontiguousarray(PCs, dtype=np.float32)
 
-    log(f'[{dataset_name}] Neighbors BPCells...')
-    to_r(PCs, 'pca_mat')
-    r('library(BPCells)')
-    r(f'knn <- knn_hnsw(pca_mat, k = {K + 1})')
-    bpcells_idx = to_py('knn$idx').to_numpy()
-    n_cells = bpcells_idx.shape[0]
-    self_found = bpcells_idx[:, 0] == np.arange(1, n_cells + 1)
-    bpcells_neighbors = (
-        np.where(self_found[:, None],
-        bpcells_idx[:, 1:], bpcells_idx[:, :K]) - 1).astype(np.uint32)
+            log(f'[{dataset_name}/{lib_name}] Computing exact KNN '
+                f'({PCs.shape[0]:,} cells x {PCs.shape[1]} PCs)...')
+            gt_neighbors, gt_distances, query_idx = exact_knn(
+                PCs, k=K, batch_size=BATCH_SIZE, max_queries=MAX_QUERIES)
 
-    log(f'[{dataset_name}] Neighbors brisc...')
-    data_sc = data_sc.neighbors(
-        min_clusters_searched=100,
-        num_kmeans_iterations=2,
-        verbose=False)
-    brisc_neighbors = data_sc.obsm['neighbors']
+            np.savez(
+                gt_cache,
+                gt_neighbors=gt_neighbors,
+                gt_distances=gt_distances,
+                query_idx=query_idx if query_idx is not None
+                else np.array(None))
 
-    if query_idx is not None:
-        brisc_neighbors = brisc_neighbors[query_idx]
-        scanpy_neighbors = scanpy_neighbors[query_idx]
-        bpcells_neighbors = bpcells_neighbors[query_idx]
+        # Truncate exact KNN to match library's K if needed
+        gt_k = gt_neighbors[:, :k_lib]
 
-    brisc_rc = recall_at_k(gt_neighbors, brisc_neighbors)
-    scanpy_rc = recall_at_k(gt_neighbors, scanpy_neighbors)
-    bpcells_rc = recall_at_k(gt_neighbors, bpcells_neighbors)
+        # Subsample to query cells if dataset was too large
+        if query_idx is not None:
+            approx_neighbors = approx_neighbors[query_idx]
 
-    for name, rc in [('brisc', brisc_rc), ('scanpy', scanpy_rc),
-                     ('BPCells', bpcells_rc)]:
+        # Compute recall
+        log(f'[{dataset_name}/{lib_name}] Computing recall@{k_lib}...')
+        rc = recall_at_k(gt_k, approx_neighbors)
+
         all_summary_rows.append(dict(
-            method=name,
+            method=lib_name,
             dataset=dataset_name,
+            k=k_lib,
             mean=float(rc.mean()),
             se=float(rc.std() / np.sqrt(len(rc))),
             median=float(np.median(rc)),
@@ -143,10 +142,10 @@ for dataset_name, data_path in DATASETS.items():
             p75=float(np.quantile(rc, 0.75)),
             p95=float(np.quantile(rc, 0.95))))
 
-    pl.DataFrame({
-        'brisc': brisc_rc, 'scanpy': scanpy_rc, 'BPCells': bpcells_rc})\
-    .write_parquet(
-        f'{OUTPUT_DIR}/knn_recall_{dataset_name}.parquet')
+        log(f'[{dataset_name}/{lib_name}] Recall@{k_lib}: '
+            f'mean={rc.mean():.4f}, median={np.median(rc):.4f}')
 
-summary_df = pl.DataFrame(all_summary_rows)\
-    .write_csv(f'{OUTPUT_DIR}/knn_recall_summary.csv')
+if all_summary_rows:
+    pl.DataFrame(all_summary_rows)\
+        .write_csv(f'{OUTPUT_DIR}/knn_recall_summary.csv')
+    log(f'Saved summary to {OUTPUT_DIR}/knn_recall_summary.csv')

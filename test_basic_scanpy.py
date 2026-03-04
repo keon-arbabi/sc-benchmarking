@@ -1,5 +1,6 @@
 import sys
 import warnings
+import numpy as np
 import polars as pl
 import scanpy as sc
 import matplotlib.pyplot as plt
@@ -12,6 +13,8 @@ DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_EMBEDDING = sys.argv[4]
+OUTPUT_PATH_PCS = sys.argv[5]
+OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
 system_info()
 print('--- Params ---')
@@ -72,6 +75,24 @@ if __name__ == '__main__':
     with timers('Find markers'):
         sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
 
+    # save pcs
+    pcs = data.obsm['X_pca']
+    pc_df = pl.DataFrame({
+        f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
+    })
+    pc_df.write_csv(OUTPUT_PATH_PCS)
+
+    # save neighbors
+    dist = data.obsp['distances']
+    n_neighbors = dist.indptr[1] - dist.indptr[0] - 1
+    neighbors = dist.indices.reshape(data.n_obs, -1)[:, 1:].astype(np.uint32)
+    neighbors_df = pl.DataFrame({
+        f'neighbor_{i+1}': neighbors[:, i]
+        for i in range(n_neighbors)
+    })
+    neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
+
+    # save embeddings
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': data.obsm['X_umap'][:, 0],
@@ -80,8 +101,7 @@ if __name__ == '__main__':
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    timers.print_summary(unit='s')
-
+    # save timings 
     timers_df = timers\
         .to_dataframe(sort=False, unit='s')\
         .with_columns(
@@ -89,6 +109,8 @@ if __name__ == '__main__':
             pl.lit('basic').alias('test'),
             pl.lit(DATA_NAME).alias('dataset'))
     timers_df.write_csv(OUTPUT_PATH_TIME)
+
+    timers.print_summary(unit='s')
 
     if not any(timers_df['aborted']):
         print('--- Completed successfully ---')
