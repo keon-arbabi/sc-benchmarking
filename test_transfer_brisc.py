@@ -12,13 +12,13 @@ NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_ACC = sys.argv[5]
 
-system_info()
-print('--- Params ---')
-print('brisc transfer')
-print(f'{DATA_PATH=}')
-print(f'{NUM_THREADS=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('brisc transfer')
+    print(f'{DATA_PATH=}')
+    print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -29,8 +29,7 @@ if __name__ == '__main__':
         data = data.qc(subset=False, allow_float=True)
 
     with timers('Split data'):
-        data = dict(data.split_by_obs('cond'))
-        data_ref, data_query  = data.pop(0), data.pop(1)
+        data_query, data_ref = data.split_by_obs('is_ref').values()
 
     del data; gc.collect()
 
@@ -47,7 +46,8 @@ if __name__ == '__main__':
     with timers('Transfer labels'):
         data_ref, data_query = data_ref.harmonize(data_query)
         data_query = data_query.label_transfer_from(
-            data_ref, 'cell_type', cell_type_column='cell_type_transferred')
+            data_ref, 'cell_type',
+            cell_type_column='cell_type_transferred')
 
     print('--- Transfer Accuracy ---')
     transfer_accuracy(

@@ -1,0 +1,109 @@
+import gc
+import sys
+import numpy as np
+import polars as pl
+import polars.selectors as cs
+sys.path.append('/home/karbabi')
+from single_cell import SingleCell
+sys.path.append('sc-benchmarking')
+from utils_local import MemoryTimer, system_info
+
+DATA_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+NUM_THREADS = int(sys.argv[3])
+OUTPUT_PATH_TIME = sys.argv[4]
+
+DATA_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+NUM_THREADS = -1
+
+if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('brisc manipulation')
+    print(f'{DATA_PATH=}')
+    print(f'{NUM_THREADS=}')
+
+    timers = MemoryTimer(silent=False)
+
+    data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
+        .qc(subset=False, allow_float=True)\
+        .hvg(batch_column='donor')
+
+    cell_name = data.obs_names[0]
+    gene_name = data.var_names[0]
+    cell_type_select = data.obs['cell_type'][0]
+    obs_cols_select = ['donor', 'cell_type', 'cell_type_broad']
+    donor_df = pl.DataFrame({
+        'donor': data.obs['donor'].unique().sort(),
+        'donor_index': range(data.obs['donor'].n_unique())
+    })
+
+    with timers('Get expression by cell'):
+        data.cell(cell_name)
+
+    with timers('Get expression by gene'):
+        data.gene(gene_name)
+
+    with timers('Subset cells'):
+        data.filter_obs(pl.col('cell_type').eq(cell_type_select))
+
+    with timers('Subset genes'):
+        data.filter_var(pl.col('highly_variable').eq(True))
+
+    with timers('Subsample cells'):
+        data.subsample_obs(n=10_000)
+
+    with timers('Select obs columns'):
+        data.select_obs(cs.numeric()._not())
+
+    with timers('Add metadata column'):
+        data = data.with_columns_obs(
+            ((pl.len().over(['donor', 'cell_type']) /
+              pl.len().over('donor')) /
+             (pl.len().over('cell_type') / pl.len()))
+            .alias('cell_type_enrichment'))
+
+    with timers('Cast obs column'):
+        data = data.cast_obs({'cell_type': pl.String})
+
+    with timers('Rename obs column'):
+        data = data.rename_obs({'cell_type_enrichment': 'ct_enrichment'})
+
+    with timers('Remove metadata column'):
+        data = data.drop_obs('ct_enrichment')
+
+    with timers('Join obs metadata'):
+        data = data.join_obs(donor_df, on='donor', validate='m:1')
+
+    with timers('Copy object'):
+        data_copy = data.copy(deep=True)
+
+    del data_copy; gc()
+
+    with timers('Rename cells'):
+        obs_col = data.obs_names.name
+        data = data.with_columns_obs(
+            ('prefix_' + pl.col(obs_col).cast(pl.String)).alias(obs_col))
+
+    with timers('Split by obs column'):
+        data_split = list(data.split_by_obs('cell_type_broad').values())
+
+    with timers('Concatenate objects'):
+        data = data_split[0].concat_obs(data_split[1:])
+
+    # Save timings
+    timers_df = timers\
+        .to_dataframe(sort=False, unit='s')\
+        .with_columns(
+            pl.lit('brisc').alias('library'),
+            pl.lit('manipulation').alias('test'),
+            pl.lit(DATA_NAME).alias('dataset'),
+            pl.lit(NUM_THREADS).alias('num_threads'))
+    timers_df.write_csv(OUTPUT_PATH_TIME)
+
+    timers.print_summary(unit='ms')
+
+    if not any(timers_df['aborted']):
+        print('--- Completed successfully ---')

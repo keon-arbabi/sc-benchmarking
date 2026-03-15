@@ -14,12 +14,12 @@ DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_DE = sys.argv[4]
 
-system_info()
-print('--- Params ---')
-print('scanpy de deseq')
-print(f'{DATA_PATH=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('scanpy de deseq')
+    print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -42,12 +42,7 @@ if __name__ == '__main__':
 
     del data_sc; gc.collect()
 
-    if DATA_NAME == 'SEAAD':
-        data_pb.obs['cond'] = data_pb.obs['cond'].astype(str)
-
-    elif DATA_NAME == 'PBMC':
-        data_pb = data_pb[data_pb.obs['cytokine'].isin(
-            ['IFN-gamma', 'PBS'])].copy()
+    data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
     with timers('Filter'):
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
@@ -55,41 +50,25 @@ if __name__ == '__main__':
     with timers('Differential expression'):
         inference = DefaultInference(n_cpus=os.cpu_count())
         cell_types = data_pb.obs['cell_type'].unique()
+
+        if DATA_NAME == 'SEAAD':
+            contrast = ['cond', 'AD', 'Control']
+        elif DATA_NAME == 'PBMC':
+            contrast = ['cond', 'IFN-gamma', 'PBS']
+
         de = {}
         for ct in cell_types:
             data_pb_ct = data_pb[data_pb.obs['cell_type'] == ct].copy()
-
-            if DATA_NAME == 'SEAAD':
-                dc.pp.filter_by_expr(
-                    data_pb_ct, group='cond', min_count=10)
-                dds = DeseqDataSet(
-                    adata=data_pb_ct,
-                    design_factors=['cond'],
-                    refit_cooks=True,
-                    inference=inference)
-                dds.deseq2()
-                stat_res = DeseqStats(
-                    dds,
-                    contrast=['cond', '1', '0'],
-                    inference=inference)
-                stat_res.summary()
-                de[ct] = stat_res.results_df
-
-            elif DATA_NAME == 'PBMC':
-                dc.pp.filter_by_expr(
-                    data_pb_ct, group='cytokine', min_count=10)
-                dds = DeseqDataSet(
-                    adata=data_pb_ct,
-                    design_factors=['cytokine'],
-                    refit_cooks=True,
-                    inference=inference)
-                dds.deseq2()
-                stat_res = DeseqStats(
-                    dds,
-                    contrast=['cytokine', 'IFN-gamma', 'PBS'],
-                    inference=inference)
-                stat_res.summary()
-                de[ct] = stat_res.results_df
+            dc.pp.filter_by_expr(data_pb_ct, group='cond', min_count=10)
+            dds = DeseqDataSet(
+                adata=data_pb_ct, design='~ cond',
+                refit_cooks=True, inference=inference, quiet=True)
+            dds.deseq2()
+            stat_res = DeseqStats(
+                dds, contrast=contrast,
+                inference=inference, quiet=True)
+            stat_res.summary()
+            de[ct] = stat_res.results_df
 
     de_df = pl.concat([
         pl.DataFrame({

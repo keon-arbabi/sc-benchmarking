@@ -16,12 +16,12 @@ OUTPUT_PATH_EMBEDDING = sys.argv[4]
 OUTPUT_PATH_PCS = sys.argv[5]
 OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
-system_info()
-print('--- Params ---')
-print('scanpy basic')
-print(f'{DATA_PATH=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('scanpy basic')
+    print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     with timers('Feature selection'):
         sc.pp.highly_variable_genes(
-            data, n_top_genes=2000, batch_key='sample')
+            data, n_top_genes=2000, batch_key='donor')
 
     with timers('PCA'):
         sc.tl.pca(data)
@@ -60,8 +60,8 @@ if __name__ == '__main__':
             sc.tl.leiden(
                 data,
                 resolution=res,
-                flavor='igraph', # future default
-                n_iterations=2, # future default
+                flavor='igraph', # Future default
+                n_iterations=2, # Future default
                 key_added=f'leiden_res_{res:4.2f}')
 
     with timers('Plot embedding'):
@@ -69,20 +69,21 @@ if __name__ == '__main__':
             data, color='cell_type')
         plt.savefig(
             f'sc-benchmarking/figures/scanpy_embedding_{DATA_NAME}.png',
-            bbox_inches='tight',
-            dpi=300)
+            bbox_inches='tight', dpi=300)
 
+    # Default method='t-test'
+    # Wilcoxon requires O(n log n) ranking per gene, infeasible at scale
     with timers('Find markers'):
-        sc.tl.rank_genes_groups(data, groupby='cell_type', method='wilcoxon')
+        sc.tl.rank_genes_groups(data, groupby='cell_type')
 
-    # save pcs
+    # Save PCs
     pcs = data.obsm['X_pca']
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
     pc_df.write_csv(OUTPUT_PATH_PCS)
 
-    # save neighbors
+    # Save neighbors
     dist = data.obsp['distances']
     n_neighbors = dist.indptr[1] - dist.indptr[0] - 1
     neighbors = dist.indices.reshape(data.n_obs, -1)[:, 1:].astype(np.uint32)
@@ -92,16 +93,20 @@ if __name__ == '__main__':
     })
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
-    # save embeddings
+    # Save embeddings
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': data.obsm['X_umap'][:, 0],
         'embed_2': data.obsm['X_umap'][:, 1],
-        'cell_type': data.obs['cell_type'].tolist()
+        'cell_type': data.obs['cell_type'].tolist(),
+        'cell_type_broad': data.obs['cell_type_broad'].tolist(),
+        'cluster_res_0.5': data.obs['leiden_res_0.50'].tolist(),
+        'cluster_res_1.0': data.obs['leiden_res_1.00'].tolist(),
+        'cluster_res_2.0': data.obs['leiden_res_2.00'].tolist(),
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    # save timings 
+    # Save timings
     timers_df = timers\
         .to_dataframe(sort=False, unit='s')\
         .with_columns(

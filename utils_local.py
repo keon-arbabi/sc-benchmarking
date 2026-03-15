@@ -35,7 +35,8 @@ class MemoryTimer:
                 [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
                 stdout=subprocess.PIPE, text=True
             )
-            monitor.stdout.readline()  # sync: wait for first sample
+            # Sync: wait for first sample
+            monitor.stdout.readline()
             start = default_timer()
             aborted = False
             try:
@@ -238,6 +239,7 @@ def system_info():
     print(f'CPU Cores Allocated: {cpu_cores}', flush=True)
     print(f'Memory Allocated: {mem_gb}', flush=True)
     print(f'Python Version: {sys.version}', flush=True)
+    print(flush=True)
 
 def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
               account='def-wainberg', dependency=None):

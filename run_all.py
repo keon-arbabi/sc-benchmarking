@@ -5,6 +5,7 @@ from utils_local import run_slurm
 
 DATA_DIR = 'single-cell'
 WORK_DIR = 'sc-benchmarking'
+
 OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
 FIGURES_DIR = os.path.join(WORK_DIR, 'figures')
@@ -22,12 +23,12 @@ SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None),
     ('test_basic_seurat.R', 'seurat', 'basic', None),
-    # ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
-    # ('test_de_scanpy.py', 'scanpy', 'de_deseq', None),
-    # ('test_de_seurat.R', 'seurat', 'de_deseq', None),
-    # ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
-    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
+    ('test_de_scanpy.py', 'scanpy', 'de', None),
+    ('test_de_seurat.R', 'seurat', 'de', None),
+    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
+    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
+    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
 ]
 
 if __name__ == '__main__':
@@ -84,6 +85,7 @@ if __name__ == '__main__':
                 job_id = run_slurm(
                     full_cmd, job_name=job_name, log_file=log,
                     # account='def-wainberg',
-                    account='rrg-shreejoy',
+                    account='def-shreejoy',
+                    # account='rrg-shreejoy',
                     CPUs=192,
                     hours=24)

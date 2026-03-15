@@ -155,7 +155,7 @@ op_order <- list(
   basic = c("Load data", "Quality control",
     "Normalization", "Feature selection", "PCA",
     "Nearest neighbors",
-    "Clustering (3 res.)", "Embedding",
+    "Clustering", "Embedding",
     "Find markers"),
   transfer = c("Load data", "Split data",
     "Normalization", "Feature selection",

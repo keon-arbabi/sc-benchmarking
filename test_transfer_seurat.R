@@ -24,14 +24,20 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(silent = FALSE)
 
+# BPCells native functions required:
+# Loading from h5ad and writing to disk
 timers$with_timer("Load data", {
   mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
   write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
   mat <- open_matrix_dir(dir = bpcells_dir)
+  # Custom reader function for reading obs
+  # without loading the entire h5ad
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
+
+rm(mat_disk, mat, obs_metadata); gc()
 
 timers$with_timer("Quality control", {
   data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
@@ -41,8 +47,8 @@ timers$with_timer("Quality control", {
 })
 
 timers$with_timer("Split data", {
-  data_ref <- subset(data, subset = cond == 0)
-  data_query <- subset(data, subset = cond == 1)
+  data_ref <- subset(data, subset = is_ref == 1)
+  data_query <- subset(data, subset = is_ref == 0)
 })
 
 rm(data); gc()
@@ -63,15 +69,12 @@ timers$with_timer("PCA", {
 
 timers$with_timer("Transfer labels", {
     anchors <- FindTransferAnchors(
-      reference = data_ref,
-      query = data_query,
+      reference = data_ref, query = data_query,
       reference.reduction = "pca")
     predictions <- TransferData(
-      anchorset = anchors,
-      refdata = data_ref$cell_type)
+      anchorset = anchors, refdata = data_ref$cell_type)
     data_query <- AddMetaData(
-      object = data_query,
-      metadata = predictions)
+      object = data_query, metadata = predictions)
 })
 
 accuracy_df <- transfer_accuracy(

@@ -13,13 +13,13 @@ OUTPUT_PATH_EMBEDDING = sys.argv[5]
 OUTPUT_PATH_PCS = sys.argv[6]
 OUTPUT_PATH_NEIGHBORS = sys.argv[7]
 
-system_info()
-print('--- Params ---')
-print('brisc basic')
-print(f'{DATA_PATH=}')
-print(f'{NUM_THREADS=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('brisc basic')
+    print(f'{DATA_PATH=}')
+    print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -30,7 +30,7 @@ if __name__ == '__main__':
         data = data.qc(subset=False, allow_float=True)
 
     with timers('Feature selection'):
-        data = data.hvg()
+        data = data.hvg(batch_column='donor')
 
     with timers('Normalization'):
         data = data.normalize()
@@ -39,9 +39,8 @@ if __name__ == '__main__':
         data = data.PCA()
 
     with timers('Nearest neighbors'):
-        data = data\
-            .neighbors()\
-            .shared_neighbors()
+        data = data.neighbors()
+        data = data.shared_neighbors()
 
     with timers('Clustering'):
         data = data.cluster(resolution=[0.5, 1.0, 2.0])
@@ -57,14 +56,16 @@ if __name__ == '__main__':
     with timers('Find markers'):
         markers = data.find_markers('cell_type')
 
-    # save pcs
+    data = data.filter_obs(pl.col('passed_QC'))
+
+    # Save PCs
     pcs = data.obsm['PCs']
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
     pc_df.write_csv(OUTPUT_PATH_PCS)
 
-    # save neighbors
+    # Save neighbors
     neighbors = data.obsm['neighbors']
     neighbors_df = pl.DataFrame({
         f'neighbor_{i+1}': neighbors[:, i]
@@ -72,16 +73,20 @@ if __name__ == '__main__':
     })
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
-    # save embeddings
+    # Save embeddings
     embedding_df = pl.DataFrame({
         'cell_id': data.obs['cell_id'],
         'embed_1': data.obsm['LocalMAP'][:, 0],
         'embed_2': data.obsm['LocalMAP'][:, 1],
-        'cell_type': data.obs['cell_type']
+        'cell_type': data.obs['cell_type'],
+        'cell_type_broad': data.obs['cell_type_broad'],
+        'cluster_res_0.5': data.obs['cluster_0'],
+        'cluster_res_1.0': data.obs['cluster_1'],
+        'cluster_res_2.0': data.obs['cluster_2'],
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    # save timings
+    # Save timings
     timers_df = timers\
         .to_dataframe(sort=False, unit='s')\
         .with_columns(

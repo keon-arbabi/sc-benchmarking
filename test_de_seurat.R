@@ -24,15 +24,20 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(silent = FALSE)
 
+# BPCells native functions required:
+# Loading from h5ad and writing to disk
 timers$with_timer("Load data", {
   mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
   write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
   mat <- open_matrix_dir(dir = bpcells_dir)
-  # Custom reader required
+  # Custom reader function for reading obs
+  # without loading the entire h5ad
   obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
+
+rm(mat_disk, mat, obs_metadata); gc()
 
 timers$with_timer("Quality control", {
   data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
@@ -42,7 +47,7 @@ timers$with_timer("Quality control", {
 })
 
 if (DATA_NAME == "SEAAD") {
-  data$cond <- ifelse(data$cond == 1, "AD", "Control")
+  data <- subset(data, subset = !is.na(cond))
   group_cols <- c("cond", "sample", "cell_type")
   ident_pairs <- list(test = "AD", ref = "Control")
 } else if (DATA_NAME == "PBMC") {
@@ -55,13 +60,13 @@ if (DATA_NAME == "SEAAD") {
 
 # BPCells native function required
 # Seurat::AggregateExpression internally coerces the input
-# count matrix through dgCMatrix (via as.sparse / %*%),
-# which fails with x[i,j] too dense for [CR]sparseMatrix
-# when the input matrix exceeds R's 32-bit index limit
+# count matrix through dgCMatrix which fails with
+# x[i,j] too dense for [CR]sparseMatrix
+# which exceeds R's 32-bit index limit
 timers$with_timer("Pseudobulk", {
   cell_groups <- do.call(paste, c(data@meta.data[group_cols], sep = "_"))
-  mat <- GetAssayData(data, layer = "counts")
-  pb_mat <- pseudobulk_matrix(mat, cell_groups, method = "sum")
+  pb_mat <- GetAssayData(data, layer = "counts")
+  pb_mat <- pseudobulk_matrix(pb_mat, cell_groups, method = "sum")
   pb_meta <- data@meta.data %>%
     mutate(group = cell_groups) %>%
     distinct(group, .keep_all = TRUE)
@@ -71,6 +76,8 @@ timers$with_timer("Pseudobulk", {
   # Required for Seurat::FindMarkers internal filtering
   data <- NormalizeData(data, verbose = FALSE)
 })
+
+rm(cell_groups, pb_mat, pb_meta); gc()
 
 timers$with_timer("Differential expression", {
   data$group <- paste(
@@ -82,9 +89,9 @@ timers$with_timer("Differential expression", {
       data,
       ident.1 = paste(ct, ident_pairs$test, sep = "_"),
       ident.2 = paste(ct, ident_pairs$ref, sep = "_"),
-      test.use = "DESeq2")
+      test.use = "DESeq2",
+      verbose = FALSE)
   }
-  de <- do.call(rbind, de_list)
 })
 
 de_df <- do.call(rbind, lapply(names(de_list), function(ct) {

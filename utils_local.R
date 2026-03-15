@@ -347,6 +347,7 @@ system_info <- function() {
   cat(sprintf("CPU Cores Allocated: %s\n", cpu_cores))
   cat(sprintf("Memory Allocated: %s\n", mem_gb_str))
   cat(sprintf("R.version=%s\n", R.version.string))
+  cat("\n")
 }
 
 read_h5ad_obs <- function(path) {
@@ -381,7 +382,9 @@ read_h5ad_obs <- function(path) {
         if (col %in% category_names) {
           codes <- item[]
           levels <- categories_group[[col]][]
-          obs_list[[col]] <- factor(levels[codes + 1], levels = levels)
+          codes_r <- codes + 1L
+          codes_r[codes_r <= 0L] <- NA_integer_
+          obs_list[[col]] <- factor(levels[codes_r], levels = levels)
         } else {
           obs_list[[col]] <- item[]
         }
@@ -394,7 +397,9 @@ read_h5ad_obs <- function(path) {
           all(c("codes", "categories") %in% item$names)) {
           codes <- item[["codes"]][]
           levels <- item[["categories"]][]
-          obs_list[[col]] <- factor(levels[codes + 1], levels = levels)
+          codes_r <- codes + 1L
+          codes_r[codes_r <= 0L] <- NA_integer_
+          obs_list[[col]] <- factor(levels[codes_r], levels = levels)
       } else if (inherits(item, "H5D") && item$dims == length(index)) {
           obs_list[[col]] <- item[]
       }

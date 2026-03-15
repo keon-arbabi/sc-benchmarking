@@ -5,7 +5,7 @@ import numpy as np
 import polars as pl
 
 OUTPUT_DIR = 'sc-benchmarking/output'
-DATASETS = ['PBMC', 'SEAAD']
+DATASETS = ['SEAAD', 'PBMC']
 LIBRARIES = {
     'brisc': {
         'pcs': 'basic_brisc_{dataset}_-1_pcs.csv',
@@ -121,7 +121,7 @@ for dataset_name in DATASETS:
         # Truncate exact KNN to match library's K if needed
         gt_k = gt_neighbors[:, :k_lib]
 
-        # Subsample to query cells if dataset was too large
+        # Subsample to query cells if needed
         if query_idx is not None:
             approx_neighbors = approx_neighbors[query_idx]
 

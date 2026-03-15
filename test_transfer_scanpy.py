@@ -10,12 +10,12 @@ DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]
 OUTPUT_PATH_ACC = sys.argv[4]
 
-system_info()
-print('--- Params ---')
-print('scanpy transfer')
-print(f'{DATA_PATH=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('scanpy transfer')
+    print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -33,8 +33,8 @@ if __name__ == '__main__':
         data = data[keep].copy()
 
     with timers('Split data'):
-        data_ref = data[data.obs['cond'] == 0].copy()
-        data_query = data[data.obs['cond'] == 1].copy()
+        data_ref = data[data.obs['is_ref'] == 1].copy()
+        data_query = data[data.obs['is_ref'] == 0].copy()
 
     del data; gc.collect()
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 
     with timers('Feature selection'):
         sc.pp.highly_variable_genes(
-            data_ref, n_top_genes=2000, batch_key='sample')
+            data_ref, n_top_genes=2000, batch_key='donor')
         hvg_genes = data_ref.var[data_ref.var['highly_variable']].index
         data_ref = data_ref[:, hvg_genes].copy()
         data_query = data_query[:, hvg_genes].copy()
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     with timers('PCA'):
         sc.pp.pca(data_ref)
 
-    data_query.obs['cell_type_orig'] = data_query.obs['cell_type'].copy()
+    data_query.obs['cell_type_orig'] = data_query.obs['cell_type']
 
     with timers('Transfer labels'):
         sc.pp.neighbors(data_ref)

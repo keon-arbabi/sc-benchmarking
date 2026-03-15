@@ -12,13 +12,13 @@ NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_DE = sys.argv[5]
 
-system_info()
-print('--- Params ---')
-print('brisc de')
-print(f'{DATA_PATH=}')
-print(f'{NUM_THREADS=}')
-
 if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('brisc de')
+    print(f'{DATA_PATH=}')
+    print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(silent=False)
 
@@ -33,38 +33,35 @@ if __name__ == '__main__':
 
     del data_sc; gc.collect()
 
-    if DATA_NAME == 'PBMC':
-        data_pb = data_pb.filter_obs(
-            pl.col('cytokine').is_in(['IFN-gamma', 'PBS']))
+    data_pb = data_pb.filter_obs(pl.col('cond').is_not_null())
 
     with timers('Filter'):
-        if DATA_NAME == 'SEAAD':
-            data_pb = data_pb.qc('cond', verbose=False)
-
-        elif DATA_NAME == 'PBMC':
-            data_pb = data_pb.qc('cytokine', verbose=False)
+        data_pb = data_pb.qc('cond', verbose=False)
 
     with timers('Differential expression'):
         if DATA_NAME == 'SEAAD':
-            formula = '~ cond + apoe4_dosage + sex + age_at_death + ' \
+            formula = '~ 0 + cond + apoe4_dosage + sex + age_at_death + ' \
                 'log2(num_cells) + log2(library_size)'
-            de = data_pb\
-                .library_size()\
-                .DE(formula,
-                    group='cond',
-                    verbose=False)
-
-        elif DATA_NAME == 'PBMC':
-            formula = '~ 0 + cytokine + donor + ' \
-                'log2(num_cells) + log2(library_size)'
-            contrasts = {
-                'IFN-gamma_vs_PBS': '`cytokineIFN-gamma` - `cytokinePBS`'}
+            contrasts = {'AD_vs_Control': '`condAD` - `condControl`'}
             de = data_pb\
                 .library_size()\
                 .DE(formula,
                     contrasts=contrasts,
-                    group='cytokine',
-                    categorical_columns=['donor', 'cytokine'],
+                    group='cond',
+                    categorical_columns=['cond'],
+                    verbose=False)
+
+        elif DATA_NAME == 'PBMC':
+            formula = '~ 0 + cond + donor + ' \
+                'log2(num_cells) + log2(library_size)'
+            contrasts = {
+                'IFN-gamma_vs_PBS': '`condIFN-gamma` - `condPBS`'}
+            de = data_pb\
+                .library_size()\
+                .DE(formula,
+                    contrasts=contrasts,
+                    group='cond',
+                    categorical_columns=['donor', 'cond'],
                     verbose=False)
 
     de_df = de.table\
