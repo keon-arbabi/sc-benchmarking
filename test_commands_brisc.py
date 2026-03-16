@@ -1,6 +1,5 @@
 import gc
 import sys
-import numpy as np
 import polars as pl
 import polars.selectors as cs
 sys.path.append('/home/karbabi')
@@ -13,8 +12,8 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 
-DATA_NAME = 'SEAAD'
-DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+DATA_NAME = 'PBMC'
+DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
 NUM_THREADS = -1
 
 if __name__ == '__main__':
@@ -34,7 +33,6 @@ if __name__ == '__main__':
     cell_name = data.obs_names[0]
     gene_name = data.var_names[0]
     cell_type_select = data.obs['cell_type'][0]
-    obs_cols_select = ['donor', 'cell_type', 'cell_type_broad']
     donor_df = pl.DataFrame({
         'donor': data.obs['donor'].unique().sort(),
         'donor_index': range(data.obs['donor'].n_unique())
@@ -56,7 +54,7 @@ if __name__ == '__main__':
         data.subsample_obs(n=10_000)
 
     with timers('Select obs columns'):
-        data.select_obs(cs.numeric()._not())
+        data.select_obs(cs.exclude(cs.numeric(), cs.first()))
 
     with timers('Add metadata column'):
         data = data.with_columns_obs(
@@ -80,7 +78,7 @@ if __name__ == '__main__':
     with timers('Copy object'):
         data_copy = data.copy(deep=True)
 
-    del data_copy; gc()
+    del data_copy; gc.collect()
 
     with timers('Rename cells'):
         obs_col = data.obs_names.name

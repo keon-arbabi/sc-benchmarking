@@ -22,13 +22,13 @@ DATASETS = {
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    ('test_basic_seurat.R', 'seurat', 'basic', None),
+    # ('test_basic_seurat.R', 'seurat', 'basic', None),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
     ('test_de_scanpy.py', 'scanpy', 'de', None),
-    ('test_de_seurat.R', 'seurat', 'de', None),
+    # ('test_de_seurat.R', 'seurat', 'de', None),
     ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
     ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
 ]
 
 if __name__ == '__main__':

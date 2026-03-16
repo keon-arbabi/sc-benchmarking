@@ -67,10 +67,8 @@ timers$with_timer("Pseudobulk", {
   cell_groups <- do.call(paste, c(data@meta.data[group_cols], sep = "_"))
   pb_mat <- GetAssayData(data, layer = "counts")
   pb_mat <- pseudobulk_matrix(pb_mat, cell_groups, method = "sum")
-  pb_meta <- data@meta.data %>%
-    mutate(group = cell_groups) %>%
-    distinct(group, .keep_all = TRUE)
-  rownames(pb_meta) <- pb_meta$group
+  pb_meta <- data@meta.data[!duplicated(cell_groups), ]
+  rownames(pb_meta) <- cell_groups[!duplicated(cell_groups)]
   pb_meta <- pb_meta[colnames(pb_mat), ]
   data <- CreateSeuratObject(counts = pb_mat, meta.data = pb_meta)
   # Required for Seurat::FindMarkers internal filtering
@@ -80,9 +78,8 @@ timers$with_timer("Pseudobulk", {
 rm(cell_groups, pb_mat, pb_meta); gc()
 
 timers$with_timer("Differential expression", {
-  data$group <- paste(
+  Idents(data) <- paste(
     data$cell_type, data@meta.data[[group_cols[1]]], sep = "_")
-  Idents(data) <- "group"
   de_list <- list()
   for (ct in unique(data$cell_type)) {
     de_list[[ct]] <- FindMarkers(

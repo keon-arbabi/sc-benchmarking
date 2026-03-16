@@ -2,7 +2,9 @@ import gc
 import io
 import os
 import sys
+import time
 import socket
+import tempfile
 import subprocess
 import numpy as np
 import polars as pl
@@ -30,13 +32,25 @@ class MemoryTimer:
         def timer():
             if not self.silent:
                 print(f'{message}...', flush=True)
-            # Start monitor with fast sampling
+            # Write monitor output to a temp file instead of a pipe.
+            # The 64 KB pipe buffer fills during long operations (the
+            # main thread is busy and never reads), blocking the monitor
+            # and missing late peaks.
+            tmpf = tempfile.NamedTemporaryFile(
+                prefix='memmon_', suffix='.csv', delete=False)
+            tmpf.close()
+            stdout_file = open(tmpf.name, 'w')
             monitor = subprocess.Popen(
                 [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
-                stdout=subprocess.PIPE, text=True
+                stdout=stdout_file
             )
-            # Sync: wait for first sample
-            monitor.stdout.readline()
+            stdout_file.close()
+            # Sync: wait for first sample (file must have content)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if os.path.getsize(tmpf.name) > 0:
+                    break
+                time.sleep(0.005)
             start = default_timer()
             aborted = False
             try:
@@ -46,15 +60,23 @@ class MemoryTimer:
                 raise e
             finally:
                 duration = default_timer() - start
-                # Stop monitor and get output
+                # Stop monitor and read output from temp file
                 monitor.terminate()
                 try:
-                    output, _ = monitor.communicate(timeout=5)
+                    monitor.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     monitor.kill()
-                    output, _ = monitor.communicate()
-                # Parse memory readings
-                output = output.strip()
+                    monitor.wait()
+                try:
+                    with open(tmpf.name) as f:
+                        output = f.read().strip()
+                except OSError:
+                    output = ''
+                finally:
+                    try:
+                        os.unlink(tmpf.name)
+                    except OSError:
+                        pass
                 if not output:
                     data = np.array([[0.0, 0.0]])
                 else:
