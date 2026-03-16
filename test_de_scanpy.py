@@ -27,8 +27,8 @@ if __name__ == '__main__':
         data_sc = sc.read_h5ad(DATA_PATH)
 
     with timers('Quality control'):
-        data_sc.var['mt'] = data_sc.var_names.str.startswith('MT-')
-        data_sc.var['malat1'] = data_sc.var_names == 'MALAT1'
+        data_sc.var['mt'] = data_sc.var_names.str.upper().str.startswith('MT-')
+        data_sc.var['malat1'] = data_sc.var_names.str.upper() == 'MALAT1'
         sc.pp.calculate_qc_metrics(
             data_sc, qc_vars=['mt', 'malat1'], inplace=True)
         keep = ((data_sc.obs['n_genes_by_counts'].values >= 100) &
@@ -55,10 +55,14 @@ if __name__ == '__main__':
             contrast = ['cond', 'AD', 'Control']
         elif DATA_NAME == 'PBMC':
             contrast = ['cond', 'IFN-gamma', 'PBS']
+        elif DATA_NAME == 'PANSCI':
+            contrast = ['cond', 'Aged', 'Young']
 
         de = {}
         for ct in cell_types:
             data_pb_ct = data_pb[data_pb.obs['cell_type'] == ct].copy()
+            if data_pb_ct.obs['cond'].nunique() < 2:
+                continue
             dc.pp.filter_by_expr(data_pb_ct, group='cond', min_count=10)
             dds = DeseqDataSet(
                 adata=data_pb_ct, design='~ cond',

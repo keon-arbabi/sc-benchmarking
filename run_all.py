@@ -16,19 +16,23 @@ RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
 DATASETS = {
     'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
     'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    'PANSCI': os.path.join(DATA_DIR, 'PanSci', 'PanSci_raw.h5ad'),
 }
 
 # (file, tool, task, thread_params)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    # ('test_basic_seurat.R', 'seurat', 'basic', None),
+    ('test_basic_seurat.R', 'seurat', 'basic', None),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
     ('test_de_scanpy.py', 'scanpy', 'de', None),
-    # ('test_de_seurat.R', 'seurat', 'de', None),
+    ('test_de_seurat.R', 'seurat', 'de', None),
     ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
     ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    ('test_commands_brisc.py', 'brisc', 'commands', [-1, 1]),
+    ('test_commands_scanpy.py', 'scanpy', 'commands', None),
+    ('test_commands_seurat.R', 'seurat', 'commands', None),
 ]
 
 if __name__ == '__main__':
@@ -45,6 +49,8 @@ if __name__ == '__main__':
         is_transfer = task == 'transfer'
 
         for d_name, d_path in DATASETS.items():
+            if d_name == 'PANSCI' and tool == 'seurat':
+                continue
             for threads in (thread_params or [None]):
                 job_parts = [(task.replace('_', f'_{tool}_', 1) if '_' in task
                               else f'{task}_{tool}'), d_name]

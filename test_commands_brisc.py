@@ -12,10 +12,6 @@ DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
 OUTPUT_PATH_TIME = sys.argv[4]
 
-DATA_NAME = 'PBMC'
-DATA_PATH = 'single-cell/PBMC/Parse_PBMC_raw.h5ad'
-NUM_THREADS = -1
-
 if __name__ == '__main__':
 
     system_info()
@@ -26,6 +22,7 @@ if __name__ == '__main__':
 
     timers = MemoryTimer(silent=False)
 
+    # Setup
     data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
         .qc(subset=False, allow_float=True)\
         .hvg(batch_column='donor')
@@ -75,11 +72,6 @@ if __name__ == '__main__':
     with timers('Join obs metadata'):
         data = data.join_obs(donor_df, on='donor', validate='m:1')
 
-    with timers('Copy object'):
-        data_copy = data.copy(deep=True)
-
-    del data_copy; gc.collect()
-
     with timers('Rename cells'):
         obs_col = data.obs_names.name
         data = data.with_columns_obs(
@@ -90,6 +82,11 @@ if __name__ == '__main__':
 
     with timers('Concatenate objects'):
         data = data_split[0].concat_obs(data_split[1:])
+
+    del data_split; gc.collect()
+
+    with timers('Copy object'):
+        data_copy = data.copy(deep=True)
 
     # Save timings
     timers_df = timers\

@@ -64,6 +64,18 @@ if __name__ == '__main__':
                     categorical_columns=['donor', 'cond'],
                     verbose=False)
 
+        elif DATA_NAME == 'PANSCI':
+            formula = '~ 0 + cond + sex + ' \
+                'log2(num_cells) + log2(library_size)'
+            contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}
+            de = data_pb\
+                .library_size()\
+                .DE(formula,
+                    contrasts=contrasts,
+                    group='cond',
+                    categorical_columns=['cond', 'sex'],
+                    verbose=True)
+
     de_df = de.table\
         .select('cell_type', 'gene', 'logFC', 'p', 'FDR')\
         .rename({'p': 'p_value', 'FDR': 'p_value_adj'})

@@ -1,63 +1,80 @@
 import os
+import sys
+import h5py
+import time
+import threading
+import numpy as np
+import anndata as ad
+sys.path.append('/home/karbabi')
+from utils import run
+
+BASE_URL = 'https://storage.googleapis.com/arc-ctc-tahoe100/2025-02-25/h5ad'
+PLATE_TEMPLATE = 'plate{}_filt_Vevo_Tahoe100M_WServicesFrom_ParseGigalab.h5ad'
+NUM_PLATES = 14
 cache_path = 'single-cell/Tahoe-100M'
-os.environ['HF_HOME'] = cache_path
-os.makedirs(cache_path, exist_ok=True)
+plates_dir = f'{cache_path}/plates'
+output_file = f'{cache_path}/Tahoe_100M.h5ad'
+os.makedirs(plates_dir, exist_ok=True)
 
-from datasets import load_dataset
-import anndata
-import pandas as pd
-from scipy.sparse import csr_matrix
-from tqdm import tqdm
+# download per plate h5ads
+for i in range(1, NUM_PLATES + 1):
+    filename = PLATE_TEMPLATE.format(i)
+    local_path = f'{plates_dir}/{filename}'
+    if os.path.exists(local_path):
+        print(f'Plate {i}/{NUM_PLATES} already downloaded, skipping')
+        continue
+    url = f'{BASE_URL}/{filename}'
+    print(f'Downloading plate {i}/{NUM_PLATES}: {filename}')
+    run(f'curl -fSL --retry 3 -o {local_path} {url}')
+    print(f'  Saved ({os.path.getsize(local_path) / 1e9:.1f} GB)')
 
-expression = load_dataset(
-    'vevotx/Tahoe-100M', streaming=False, split='train')
-gene_meta = load_dataset(
-    'vevotx/Tahoe-100M', name='gene_metadata', split='train')
-sample_meta = load_dataset(
-    'vevotx/Tahoe-100M', 'sample_metadata', split='train').to_pandas()
-drug_meta = load_dataset(
-    'vevotx/Tahoe-100M', 'drug_metadata', split='train').to_pandas()
-cell_line_meta = load_dataset(
-    'vevotx/Tahoe-100M', 'cell_line_metadata', split='train').to_pandas()
+# downcast X/indices int64 -> int32
+for i in range(1, NUM_PLATES + 1):
+    path = f'{plates_dir}/{PLATE_TEMPLATE.format(i)}'
+    with h5py.File(path, 'a') as f:
+        if f['X/indices'].dtype != np.int64:
+            print(f'Plate {i}/{NUM_PLATES}: already int32, skipping')
+            continue
+        print(f'Plate {i}/{NUM_PLATES}: downcasting indices int64 -> int32')
+        src = f['X/indices']
+        data = src[:].astype(np.int32)
+        chunks = src.chunks
+        del f['X/indices']
+        f.create_dataset('X/indices', data=data, chunks=chunks)
 
-gene_vocab = {row['token_id']: row['ensembl_id'] for row in gene_meta}
-token_ids, gene_names = zip(*sorted(gene_vocab.items()))
-token_map = {token_id: i for i, token_id in enumerate(token_ids)}
+# concat on disk
+if os.path.exists(output_file):
+    print(f'{output_file} already exists, skipping merge')
+else:
+    data_dict = {f'plate_{i}': f'{plates_dir}/{PLATE_TEMPLATE.format(i)}'
+                 for i in range(1, NUM_PLATES + 1)}
+    total_cells = 0
+    for i in range(1, NUM_PLATES + 1):
+        with h5py.File(f'{plates_dir}/{PLATE_TEMPLATE.format(i)}', 'r') as f:
+            total_cells += f['X/indptr'].shape[0] - 1
 
-data, indices, indptr = [], [], [0]
-obs_data = []
+    done = threading.Event()
+    def monitor():
+        t0 = time.time()
+        while not done.wait(30):
+            try:
+                with h5py.File(output_file, 'r', swmr=True) as f:
+                    written = f['X/indptr'].shape[0] - 1
+                pct = written / total_cells * 100
+                print(f'  {written:,}/{total_cells:,} cells '
+                      f'({pct:.0f}%, {time.time() - t0:.0f}s elapsed)')
+            except Exception:
+                pass
+    threading.Thread(target=monitor, daemon=True).start()
 
-n_cells_to_process = 50_000_000
+    print(f'Merging {NUM_PLATES} plates ({total_cells:,} cells) '
+          f'with concat_on_disk...')
+    ad.experimental.concat_on_disk(data_dict, output_file, label='plate')
+    done.set()
+    print(f'Wrote {output_file} ({os.path.getsize(output_file) / 1e9:.1f} GB)')
 
-for i, cell in enumerate(tqdm(expression, desc='Processing cells')):
-    if i >= n_cells_to_process:
-        break
-        
-    genes = cell['genes']
-    exp = cell['expressions']
-    
-    if len(exp) > 0 and exp[0] < 0:
-        genes, exp = genes[1:], exp[1:]
-
-    cols = [token_map[g] for g in genes if g in token_map]
-    exprs = [e for g, e in zip(genes, exp) if g in token_map]
-
-    data.extend(exprs)
-    indices.extend(cols)
-    indptr.append(len(data))
-    
-    obs_data.append(
-        {k: v for k, v in cell.items() if k not in ['genes', 'expressions']}
-    )
-
-shape = (len(indptr) - 1, len(gene_names))
-expr_matrix = csr_matrix((data, indices, indptr), shape=shape)
-obs_df = pd.DataFrame(obs_data)
-
-adata = anndata.AnnData(X=expr_matrix, obs=obs_df)
-adata.var.index = pd.Index(gene_names, name='ensembl_id')
-adata.obs = adata.obs.merge(
-    sample_meta.drop(columns=['drug', 'plate']), on='sample', how='left')
-adata.obs = adata.obs.merge(drug_meta, on='drug', how='left')
-
-adata.write_h5ad(f'{cache_path}/Tahoe_50M.h5ad')
+# verify
+with h5py.File(output_file, 'r') as f:
+    for key in ['X/data', 'X/indices', 'X/indptr']:
+        print(f'{key}: dtype={f[key].dtype}, shape={f[key].shape}')
+    print(f'obs columns: {list(f["obs"].keys())}')

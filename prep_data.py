@@ -54,11 +54,9 @@ sc = sc\
             .alias('cond'),
         pl.col('apoe4_dosage')
             .cast(pl.String).str.count_matches('4')
-            .fill_null(strategy='mean')
-            .round(),
+            .fill_null(strategy='mean').round(),
         pl.col('pmi')
-            .cast(pl.String)
-            .cast(pl.Float32, strict=False),
+            .cast(pl.String).cast(pl.Float32, strict=False),
         pl.col('sample').alias('donor'),
         pl.col('is_ref').cast(pl.UInt8))\
     .select_obs(cols)\
@@ -198,5 +196,97 @@ column       value
 sc.save(f'{dir_data}/Parse_PBMC_raw.h5ad', overwrite=True)
 sc.subsample_obs(n=200000, by_column='cell_type', QC_column=None)\
     .save(f'{dir_data}/Parse_PBMC_raw_200K.h5ad', overwrite=True)
+
+del sc; gc.collect()
+
+# PanSci
+# https://pmc.ncbi.nlm.nih.gov/articles/PMC11910726/
+# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE247719
+
+dir_data = 'single-cell/PanSci'
+os.makedirs(dir_data, exist_ok=True)
+
+geo_base = 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE247nnn/GSE247719/suppl'
+pansci_organs = [
+    '01_Kidney', '02_Lung', '03_Heart', '04_Liver', '05_Muscle',
+    '06_Stomach', '07_BAT', '08_iWAT', '09_gWAT', '10_Ileum',
+    '11_Colon', '12_Jejunum', '13_Duodenum',
+]
+for organ in pansci_organs:
+    fname = f'GSE247719_PanSci_{organ}_adata.h5ad'
+    fpath = f'{dir_data}/{fname}'
+    if not os.path.exists(fpath):
+        url = f'{geo_base}/{fname.replace("_", "%5F").replace(".", "%2E")}'
+        run(f'wget {url} -O {fpath}')
+
+cols = ['sample', 'donor', 'cell_type', 'cell_type_broad', 'is_ref', 'cond',
+        'organ', 'sex', 'age_group']
+
+sc = SingleCell(f'{dir_data}/GSE247719_PanSci_{pansci_organs[0]}_adata.h5ad')\
+    .concat_obs([
+        SingleCell(f'{dir_data}/GSE247719_PanSci_{organ}_adata.h5ad')
+        for organ in pansci_organs[1:]], flexible=True)\
+    .set_var_names('gene_name')\
+    .make_var_names_unique(separator='~')\
+    .cast_obs({'ID': pl.String})\
+    .rename_obs({
+        'sample': 'cell_id', 'Main_cell_type': 'cell_type',
+        'Lineage': 'cell_type_broad', 'Organ_name': 'organ',
+        'Age_group': 'age_group', 'Sex': 'sex'})\
+    .with_columns_obs(
+        (pl.col('ID') + '_' + pl.col('organ')).alias('sample'),
+        pl.col('ID').alias('donor'),
+        pl.col('Genotype').eq('WT').cast(pl.UInt8).alias('is_ref'),
+        pl.when(pl.col('Genotype').eq('WT') &
+                pl.col('age_group').eq('06_months'))
+            .then(pl.lit('Young'))
+            .when(pl.col('Genotype').eq('WT') &
+                  pl.col('age_group').eq('23_months'))
+            .then(pl.lit('Aged'))
+            .otherwise(None)
+            .alias('cond'))\
+    .select_obs(cols)\
+    .drop_var(['gene_id', 'gene_type'])\
+    .qc_metrics(
+        num_counts_column='nCount_RNA',
+        num_genes_column='nFeature_RNA',
+        mito_fraction_column='percent.mt',
+        allow_float=True)
+
+print(sc)
+print(sc.peek_obs())
+print(sc.peek_var())
+
+'''
+SingleCell dataset in CSR format with 20,317,820 cells (obs), 55,416 genes (var),
+and 11,863,129,008 non-zero entries (X)
+    obs: cell_id, sample, donor, cell_type, cell_type_broad, is_ref, cond,
+         organ, sex, age_group, nCount_RNA,
+         nFeature_RNA, percent.mt
+    var: gene_name
+    uns: QCed, normalized
+
+column           value
+ cell_id          20221205_EXP096_01_AACCGATTGC_…
+ sample           11_Kidney
+ donor            11
+ cell_type        Proximal tubule cells
+ cell_type_broad  Epithelial
+ is_ref           1
+ cond             Young
+ organ            Kidney
+ sex              Male
+ age_group        06_months
+ nCount_RNA       1560
+ nFeature_RNA     813
+ percent.mt       0.0025641026
+
+column     value
+ gene_name  4933401J01Rik
+'''
+
+sc.save(f'{dir_data}/PanSci_raw.h5ad', overwrite=True)
+sc.subsample_obs(n=200000, by_column='cell_type', QC_column=None)\
+    .save(f'{dir_data}/PanSci_raw_200K.h5ad', overwrite=True)
 
 del sc; gc.collect()

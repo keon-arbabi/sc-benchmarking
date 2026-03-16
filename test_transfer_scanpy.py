@@ -23,8 +23,8 @@ if __name__ == '__main__':
         data = sc.read_h5ad(DATA_PATH)
 
     with timers('Quality control'):
-        data.var['mt'] = data.var_names.str.startswith('MT-')
-        data.var['malat1'] = data.var_names == 'MALAT1'
+        data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
+        data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
         sc.pp.calculate_qc_metrics(
             data, qc_vars=['mt', 'malat1'], inplace=True)
         keep = ((data.obs['n_genes_by_counts'].values >= 100) &
