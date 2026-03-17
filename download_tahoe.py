@@ -1,8 +1,6 @@
 import os
 import sys
 import h5py
-import time
-import threading
 import numpy as np
 import anndata as ad
 sys.path.append('/home/karbabi')
@@ -48,29 +46,8 @@ if os.path.exists(output_file):
 else:
     data_dict = {f'plate_{i}': f'{plates_dir}/{PLATE_TEMPLATE.format(i)}'
                  for i in range(1, NUM_PLATES + 1)}
-    total_cells = 0
-    for i in range(1, NUM_PLATES + 1):
-        with h5py.File(f'{plates_dir}/{PLATE_TEMPLATE.format(i)}', 'r') as f:
-            total_cells += f['X/indptr'].shape[0] - 1
-
-    done = threading.Event()
-    def monitor():
-        t0 = time.time()
-        while not done.wait(30):
-            try:
-                with h5py.File(output_file, 'r', swmr=True) as f:
-                    written = f['X/indptr'].shape[0] - 1
-                pct = written / total_cells * 100
-                print(f'  {written:,}/{total_cells:,} cells '
-                      f'({pct:.0f}%, {time.time() - t0:.0f}s elapsed)')
-            except Exception:
-                pass
-    threading.Thread(target=monitor, daemon=True).start()
-
-    print(f'Merging {NUM_PLATES} plates ({total_cells:,} cells) '
-          f'with concat_on_disk...')
+    print(f'Merging {NUM_PLATES} plates with concat_on_disk...')
     ad.experimental.concat_on_disk(data_dict, output_file, label='plate')
-    done.set()
     print(f'Wrote {output_file} ({os.path.getsize(output_file) / 1e9:.1f} GB)')
 
 # verify
