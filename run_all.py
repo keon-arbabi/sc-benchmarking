@@ -30,7 +30,6 @@ SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None),
     ('test_basic_rapids.py', 'rapids', 'basic', None),
-    ('test_basic_rapids_mg.py', 'rapids_mg', 'basic', None),
     ('test_basic_seurat.R', 'seurat', 'basic', None),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
     ('test_de_scanpy.py', 'scanpy', 'de', None),
@@ -52,7 +51,7 @@ if __name__ == '__main__':
     for script_file, tool, task, thread_params in SCRIPTS:
         if script_file.endswith('.R'):
             interpreter = RSCRIPT
-        elif tool in ('rapids', 'rapids_mg'):
+        elif tool == 'rapids':
             interpreter = PYTHON_RAPIDS
         else:
             interpreter = PYTHON
@@ -95,8 +94,7 @@ if __name__ == '__main__':
                     cmd.append(os.path.join(
                         OUTPUT_DIR, f'{job_name}_accuracy.csv'))
 
-                is_gpu = tool in ('rapids', 'rapids_mg')
-                is_multi_gpu = tool == 'rapids_mg'
+                is_gpu = tool == 'rapids'
                 env = {'PYTHONPATH': f'{os.getcwd()}:$PYTHONPATH'}
                 if is_gpu:
                     env['PIP_CONFIG_FILE'] = '/dev/null'
@@ -110,7 +108,7 @@ if __name__ == '__main__':
                     # account='def-wainberg',
                     account='def-shreejoy',
                     # account='rrg-shreejoy',
-                    CPUs=96 if is_multi_gpu else (24 if is_gpu else 192),
-                    gpus_per_node=4 if is_multi_gpu else (1 if is_gpu else 0),
+                    CPUs=96 if is_gpu else 192,
+                    gpus_per_node=4 if is_gpu else 0,
                     hours=24,
                     env=env)

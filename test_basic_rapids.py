@@ -1,8 +1,14 @@
+import gc
 import sys
 import numpy as np
 import polars as pl
 import scanpy as sc
+import anndata as ad
 import rapids_singlecell as rsc
+from dask_cuda import LocalCUDACluster
+from dask.distributed import Client
+from packaging.version import parse as parse_version
+import h5py
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,6 +22,8 @@ OUTPUT_PATH_EMBEDDING = sys.argv[4]
 OUTPUT_PATH_PCS = sys.argv[5]
 OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
+CHUNK_SIZE = 50_000
+
 if __name__ == '__main__':
 
     system_info()
@@ -23,40 +31,77 @@ if __name__ == '__main__':
     print('rapids basic')
     print(f'{DATA_PATH=}')
 
+    # Multi-GPU Dask cluster with RMM pool allocators
+    cluster = LocalCUDACluster(
+        protocol='ucx',
+        rmm_pool_size='10GB',
+        rmm_maximum_pool_size='70GB',
+        rmm_allocator_external_lib_list='cupy',
+    )
+    client = Client(cluster)
+    print(client)
+
+    if parse_version(ad.__version__) < parse_version('0.12.0rc1'):
+        from anndata.experimental import read_elem_as_dask as read_dask
+    else:
+        from anndata.experimental import read_elem_lazy as read_dask
+
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'rapids', 'test': 'basic',
                      'dataset': DATA_NAME})
 
-    # Load and QC on CPU, then transfer filtered data to GPU
-    # (raw data too large for single GPU VRAM; driver 535 breaks managed memory)
     with timers('Load data'):
-        data = sc.read_h5ad(DATA_PATH)
+        f = h5py.File(DATA_PATH, 'r')
+        shape = tuple(f['X'].attrs['shape'])
+        data = ad.AnnData(
+            X=read_dask(f['X'], (CHUNK_SIZE, shape[1])),
+            obs=ad.io.read_elem(f['obs']),
+            var=ad.io.read_elem(f['var']),
+        )
+        rsc.get.anndata_to_GPU(data)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
 
     with timers('Quality control'):
         data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
         data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
-        sc.pp.calculate_qc_metrics(
-            data, qc_vars=['mt', 'malat1'], inplace=True)
+        rsc.pp.calculate_qc_metrics(data, qc_vars=['mt', 'malat1'])
         keep = ((data.obs['n_genes_by_counts'].values >= 100) &
                 (data.obs['pct_counts_mt'].values <= 5) &
                 (data.obs['pct_counts_malat1'].values > 0))
         data = data[keep].copy()
-        rsc.get.anndata_to_GPU(data)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+    gc.collect()
 
     with timers('Normalization'):
         rsc.pp.normalize_total(data)
         rsc.pp.log1p(data)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
 
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
             data, n_top_genes=2000, batch_key='donor')
+        data = data[:, data.var.highly_variable].copy()
+        # Rechunk evenly across workers
+        n_workers = len(client.scheduler_info()['workers'])
+        rows_per_worker = (data.shape[0] + n_workers - 1) // n_workers
+        data.X = data.X.rechunk(
+            (rows_per_worker, data.shape[1])).persist()
+        data.X.compute_chunk_sizes()
 
     with timers('PCA'):
-        rsc.tl.pca(data)
+        rsc.tl.pca(data, n_comps=50, mask_var=None)
+        data.obsm['X_pca'] = data.obsm['X_pca'].persist()
+        data.obsm['X_pca'].compute_chunk_sizes()
+        data.obsm['X_pca'] = data.obsm['X_pca'].compute()
 
     with timers('Nearest neighbors'):
-        rsc.pp.neighbors(data)
+        rsc.pp.neighbors(data, n_neighbors=15, n_pcs=50,
+                         algorithm='mg_ivfflat')
 
     with timers('Embedding'):
         rsc.tl.umap(data)
@@ -70,22 +115,18 @@ if __name__ == '__main__':
 
     with timers('Plot embedding'):
         rsc.get.anndata_to_CPU(data)
-        sc.pl.umap(
-            data, color='cell_type')
+        sc.pl.umap(data, color='cell_type')
         plt.savefig(
             f'sc-benchmarking/figures/rapids_embedding_{DATA_NAME}.png',
             bbox_inches='tight', dpi=300)
-        rsc.get.anndata_to_GPU(data)
 
-    # GPU-native logreg; scanpy uses t-test
     with timers('Find markers'):
-        rsc.tl.rank_genes_groups_logreg(data, groupby='cell_type')
-
-    # Move back to CPU for output
-    rsc.get.anndata_to_CPU(data)
+        sc.tl.rank_genes_groups(data, groupby='cell_type')
 
     # Save PCs
     pcs = data.obsm['X_pca']
+    if hasattr(pcs, 'get'):
+        pcs = pcs.get()
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
@@ -102,10 +143,13 @@ if __name__ == '__main__':
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
     # Save embeddings
+    umap_coords = data.obsm['X_umap']
+    if hasattr(umap_coords, 'get'):
+        umap_coords = umap_coords.get()
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
-        'embed_1': data.obsm['X_umap'][:, 0],
-        'embed_2': data.obsm['X_umap'][:, 1],
+        'embed_1': umap_coords[:, 0],
+        'embed_2': umap_coords[:, 1],
         'cell_type': data.obs['cell_type'].tolist(),
         'cell_type_broad': data.obs['cell_type_broad'].tolist(),
         'cluster_res_0.25': data.obs['leiden_res_0.25'].tolist(),
@@ -117,6 +161,8 @@ if __name__ == '__main__':
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
     timers.shutdown()
+    client.close()
+    cluster.close()
     print('--- Completed successfully ---')
 
     print('\n--- Session Info ---')
