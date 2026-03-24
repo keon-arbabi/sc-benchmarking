@@ -21,7 +21,10 @@ if __name__ == '__main__':
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'brisc', 'test': 'basic',
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
@@ -36,20 +39,20 @@ if __name__ == '__main__':
         data = data.normalize()
 
     with timers('PCA'):
-        data = data.PCA()
+        data = data.pca()
 
     with timers('Nearest neighbors'):
         data = data.neighbors()
         data = data.shared_neighbors()
 
     with timers('Clustering'):
-        data = data.cluster(resolution=[0.5, 1.0, 2.0])
+        data = data.cluster(resolution=[0.25, 0.5, 1.0, 1.5, 2.0])
 
     with timers('Embedding'):
-        data = data.embed()
+        data = data.pacmap()
 
     with timers('Plot embedding'):
-        data.plot_embedding(
+        data.plot_pacmap(
             'cell_type',
             f'sc-benchmarking/figures/brisc_embedding_{DATA_NAME}.png')
 
@@ -59,7 +62,7 @@ if __name__ == '__main__':
     data = data.filter_obs(pl.col('passed_QC'))
 
     # Save PCs
-    pcs = data.obsm['PCs']
+    pcs = data.obsm['pca']
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
@@ -76,27 +79,17 @@ if __name__ == '__main__':
     # Save embeddings
     embedding_df = pl.DataFrame({
         'cell_id': data.obs['cell_id'],
-        'embed_1': data.obsm['LocalMAP'][:, 0],
-        'embed_2': data.obsm['LocalMAP'][:, 1],
+        'embed_1': data.obsm['pacmap'][:, 0],
+        'embed_2': data.obsm['pacmap'][:, 1],
         'cell_type': data.obs['cell_type'],
         'cell_type_broad': data.obs['cell_type_broad'],
-        'cluster_res_0.5': data.obs['cluster_0'],
-        'cluster_res_1.0': data.obs['cluster_1'],
-        'cluster_res_2.0': data.obs['cluster_2'],
+        'cluster_res_0.25': data.obs['cluster_0'],
+        'cluster_res_0.5': data.obs['cluster_1'],
+        'cluster_res_1.0': data.obs['cluster_2'],
+        'cluster_res_1.5': data.obs['cluster_3'],
+        'cluster_res_2.0': data.obs['cluster_4'],
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
-    # Save timings
-    timers_df = timers\
-        .to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('brisc').alias('library'),
-            pl.lit('basic').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'),
-            pl.lit(NUM_THREADS).alias('num_threads'))
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    timers.print_summary(unit='s')
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')

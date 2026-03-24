@@ -1,6 +1,6 @@
 import gc
 import sys
-import polars as pl
+
 import scanpy as sc
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy
@@ -17,7 +17,10 @@ if __name__ == '__main__':
     print('scanpy transfer')
     print(f'{DATA_PATH=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'scanpy', 'test': 'transfer',
+                     'dataset': DATA_NAME})
 
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
@@ -69,17 +72,8 @@ if __name__ == '__main__':
         data_query.obs, 'cell_type_orig', 'cell_type')\
     .write_csv(OUTPUT_PATH_ACC)
 
-    timers.print_summary(unit='s')
-
-    timers_df = timers.to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('scanpy').alias('library'),
-            pl.lit('transfer').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'))
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')
 
     print('\n--- Session Info ---')
     sc.logging.print_header()

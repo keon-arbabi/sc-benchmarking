@@ -1,6 +1,6 @@
 import gc
 import sys
-import polars as pl
+
 sys.path.append('/home/karbabi')
 from single_cell import SingleCell
 sys.path.append('sc-benchmarking')
@@ -20,7 +20,10 @@ if __name__ == '__main__':
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'brisc', 'test': 'transfer',
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
     with timers('Load data'):
         data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
@@ -41,7 +44,7 @@ if __name__ == '__main__':
         data_query = data_query.normalize()
 
     with timers('PCA'):
-        data_ref, data_query = data_ref.PCA(data_query)
+        data_ref, data_query = data_ref.pca(data_query)
 
     with timers('Transfer labels'):
         data_ref, data_query = data_ref.harmonize(data_query)
@@ -54,15 +57,5 @@ if __name__ == '__main__':
         data_query.obs, 'cell_type', 'cell_type_transferred')\
     .write_csv(OUTPUT_PATH_ACC)
 
-    timers.print_summary(unit='s')
-
-    timers_df = timers.to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('brisc').alias('library'),
-            pl.lit('transfer').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'),
-            pl.lit(NUM_THREADS).alias('num_threads'))
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')

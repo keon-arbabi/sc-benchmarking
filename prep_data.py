@@ -73,8 +73,8 @@ sc = sc\
         allow_float=True)
 
 print(sc)
-print(sc.peek_obs())
-print(sc.peek_var())
+sc.peek_obs()
+sc.peek_var()
 
 '''
 SingleCell dataset in CSR format with 1,378,211 cells (obs), 36,601 genes (var),
@@ -165,8 +165,8 @@ sc = SingleCell(file_data)\
         allow_float=True)
 
 print(sc)
-print(sc.peek_obs())
-print(sc.peek_var())
+sc.peek_obs()
+sc.peek_var()
 
 '''
 SingleCell dataset in CSR format with 9,697,974 cells (obs), 40,352 genes (var),
@@ -254,8 +254,8 @@ sc = SingleCell(f'{dir_data}/GSE247719_PanSci_{pansci_organs[0]}_adata.h5ad')\
         allow_float=True)
 
 print(sc)
-print(sc.peek_obs())
-print(sc.peek_var())
+sc.peek_obs()
+sc.peek_var()
 
 '''
 SingleCell dataset in CSR format with 20,317,820 cells (obs), 55,416 genes (var),

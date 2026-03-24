@@ -8,10 +8,16 @@ suppressPackageStartupMessages({
 
 POLLING_INTERVAL <- '0.05'
 
-MemoryTimer = function(silent = TRUE) {
+MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
+                       unit = "s", summary_unit = NULL) {
   env = environment()
   env$timings = list()
   pid = Sys.getpid()
+  env$.shutdown_done = FALSE
+  env$.csv_path = csv_path
+  env$.csv_columns = csv_columns
+  env$.unit = unit
+  env$.summary_unit = if (!is.null(summary_unit)) summary_unit else unit
 
   with_timer = function(message, expr) {
     if (!silent) cat(paste0(message, '...\n'))
@@ -41,8 +47,11 @@ MemoryTimer = function(silent = TRUE) {
 
     tryCatch({
       result = invisible(eval(substitute(expr), parent.frame()))
+    }, interrupt = function(i) {
+      aborted <<- TRUE
+      error_obj <<- i
     }, error = function(e) {
-      aborted <<- TRUE  # Use <<- to modify outer scope
+      aborted <<- TRUE
       error_obj <<- e
     }, finally = {
       duration = as.numeric(difftime(Sys.time(), start, units = 'secs'))
@@ -103,8 +112,14 @@ MemoryTimer = function(silent = TRUE) {
       }
       gc()
     })
-    # Re-throw error after cleanup
-    if (!is.null(error_obj)) stop(error_obj)
+    # Re-throw after cleanup
+    if (!is.null(error_obj)) {
+      if (inherits(error_obj, "interrupt")) {
+        stop("Interrupted by signal")
+      } else {
+        stop(error_obj)
+      }
+    }
 
     return(invisible(result))
   }
@@ -284,10 +299,32 @@ MemoryTimer = function(silent = TRUE) {
     )
   }
 
+  shutdown = function() {
+    if (env$.shutdown_done) return(invisible(NULL))
+    env$.shutdown_done <- TRUE
+    if (length(env$timings) == 0) return(invisible(NULL))
+    print_summary(unit = env$.summary_unit)
+    if (!is.null(env$.csv_path)) {
+      df <- to_dataframe(sort = FALSE, unit = env$.unit)
+      if (!is.null(env$.csv_columns)) {
+        for (col_name in names(env$.csv_columns)) {
+          df[[col_name]] <- env$.csv_columns[[col_name]]
+        }
+      }
+      write.csv(df, env$.csv_path, row.names = FALSE)
+    }
+  }
+
+  # Auto-flush timings on R exit (e.g. SLURM timeout)
+  shutdown_ref <- new.env(parent = emptyenv())
+  shutdown_ref$fn <- shutdown
+  reg.finalizer(shutdown_ref, function(e) e$fn(), onexit = TRUE)
+
   structure(list(
     with_timer = with_timer,
     print_summary = print_summary,
-    to_dataframe = to_dataframe
+    to_dataframe = to_dataframe,
+    shutdown = shutdown
   ), class = "TimerCollection")
 }
 

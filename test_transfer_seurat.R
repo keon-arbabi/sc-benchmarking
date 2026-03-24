@@ -22,7 +22,10 @@ cat("--- Params ---\n")
 cat("seurat transfer\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
-timers <- MemoryTimer(silent = FALSE)
+timers <- MemoryTimer(
+  silent = FALSE, csv_path = OUTPUT_PATH_TIME,
+  csv_columns = list(library = "seurat", test = "transfer",
+                     dataset = DATA_NAME, num_threads = "single-threaded"))
 
 # BPCells native functions required:
 # Loading from h5ad and writing to disk
@@ -81,18 +84,8 @@ accuracy_df <- transfer_accuracy(
   data_query@meta.data, "cell_type", "predicted.id")
 write.csv(accuracy_df, OUTPUT_PATH_ACC, row.names = FALSE)
 
-timers$print_summary(unit = "s")
-
-timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library <- 'seurat'
-timers_df$test <- 'transfer'
-timers_df$dataset <- DATA_NAME
-timers_df$num_threads <- 'single-threaded'
-write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
-
-if (!any(timers_df$aborted)) {
-  cat("--- Completed successfully ---\n")
-}
+timers$shutdown()
+cat("--- Completed successfully ---\n")
 
 cat("\n--- Session Info ---\n")
 print(sessionInfo())

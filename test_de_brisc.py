@@ -20,7 +20,10 @@ if __name__ == '__main__':
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'brisc', 'test': 'de',
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
     with timers('Load data'):
         data_sc = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
@@ -81,15 +84,5 @@ if __name__ == '__main__':
         .rename({'p': 'p_value', 'FDR': 'p_value_adj'})
     de_df.write_csv(OUTPUT_PATH_DE)
 
-    timers.print_summary(unit='s')
-
-    timers_df = timers.to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('brisc').alias('library'),
-            pl.lit('de').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'),
-            pl.lit(NUM_THREADS).alias('num_threads'))
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')

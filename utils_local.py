@@ -22,9 +22,25 @@ _MONITOR_MEM_SH_PATH = os.path.join(
 POLLING_INTERVAL = '0.05'
 
 class MemoryTimer:
-    def __init__(self, silent=True):
+    def __init__(self, silent=True, csv_path=None, csv_columns=None,
+                 unit='s', summary_unit=None):
+        import atexit
+        import signal
+
         self.timings = {}
         self.silent = silent
+        self._csv_path = csv_path
+        self._csv_columns = csv_columns or {}
+        self._unit = unit
+        self._summary_unit = summary_unit or unit
+        self._shutdown_done = False
+
+        def _sigterm_handler(signum, frame):
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            raise SystemExit(1)
+
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+        atexit.register(self.shutdown)
 
     def __call__(self, message: str) -> ContextManager[None]:
         pid = os.getpid()
@@ -55,15 +71,17 @@ class MemoryTimer:
             aborted = False
             try:
                 yield
-            except Exception as e:
+            except BaseException as e:
                 aborted = True
                 raise e
             finally:
                 duration = default_timer() - start
                 # Stop monitor and read output from temp file
-                monitor.terminate()
                 try:
+                    monitor.terminate()
                     monitor.wait(timeout=5)
+                except ProcessLookupError:
+                    pass
                 except subprocess.TimeoutExpired:
                     monitor.kill()
                     monitor.wait()
@@ -123,6 +141,22 @@ class MemoryTimer:
                 gc.collect()
 
         return timer()
+
+    def shutdown(self):
+        # Write timing summary and CSV. No-op if already called.
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
+        if not self.timings:
+            return
+        self.print_summary(unit=self._summary_unit)
+        if self._csv_path:
+            df = self.to_dataframe(sort=False, unit=self._unit)
+            if self._csv_columns:
+                df = df.with_columns(
+                    [pl.lit(v).alias(k)
+                     for k, v in self._csv_columns.items()])
+            df.write_csv(self._csv_path)
 
     def print_summary(self, sort=False, unit=None):
         print('\n--- Timing Summary ---')
@@ -261,10 +295,23 @@ def system_info():
     print(f'CPU Cores Allocated: {cpu_cores}', flush=True)
     print(f'Memory Allocated: {mem_gb}', flush=True)
     print(f'Python Version: {sys.version}', flush=True)
+
+    gpu_info = 'N/A'
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=name,memory.total',
+             '--format=csv,noheader'],
+            capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            gpu_info = result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    print(f'GPU: {gpu_info}', flush=True)
+
     print(flush=True)
 
-def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
-              account='def-wainberg', dependency=None):
+def run_slurm(command, job_name, log_file, CPUs=1, gpus_per_node=0, hours=1,
+              memory='0', account='def-wainberg', dependency=None, env=None):
     from tempfile import NamedTemporaryFile
 
     cluster = os.environ.get('CLUSTER')
@@ -277,7 +324,7 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
                 suffix='.sh', delete=False) as temp_file:
 
             partition = ''
-            if cluster in ('trillium', 'niagara'):
+            if cluster in ('trillium', 'niagara') and gpus_per_node == 0:
                 partition = '#SBATCH -p compute\n'
 
             memory_line = ''
@@ -288,6 +335,15 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
             if dependency:
                 dependency_line = f'#SBATCH --dependency=afterok:{dependency}\n'
 
+            gpu_line = ''
+            if gpus_per_node > 0:
+                gpu_line = f'#SBATCH --gpus-per-node={gpus_per_node}\n'
+
+            env_lines = ''
+            if env:
+                env_lines = ''.join(
+                    f'export {k}={v}\n' for k, v in env.items())
+
             print(
                 f'#!/bin/bash\n'
                 f'{partition}'
@@ -295,13 +351,22 @@ def run_slurm(command, job_name, log_file, CPUs=1, hours=1, memory='0',
                 f'#SBATCH -N 1\n'
                 f'#SBATCH -n {CPUs}\n'
                 f'{memory_line}'
+                f'{gpu_line}'
                 f'{dependency_line}'
                 f'#SBATCH -t {runtime}\n'
+                f'#SBATCH --signal=B:TERM@30\n'
                 f'#SBATCH -J {job_name}\n'
                 f'#SBATCH -o {log_file}\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'export PYTHONUNBUFFERED=1\n'
-                f'set -euo pipefail; {command}\n',
+                f'{env_lines}'
+                f'set -m\n'
+                f'{command} &\n'
+                f'CHILD=$!\n'
+                f'trap "kill -INT -$CHILD 2>/dev/null; '
+                f'wait $CHILD 2>/dev/null; exit \\$?" TERM\n'
+                f'wait $CHILD\n'
+                f'exit $?\n',
                 file=temp_file)
 
         sbatch = ('.sbatch' if cluster in ('trillium', 'niagara')

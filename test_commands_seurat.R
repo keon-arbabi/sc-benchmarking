@@ -15,7 +15,10 @@ cat("--- Params ---\n")
 cat("seurat manipulation\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
-timers <- MemoryTimer(silent = FALSE)
+timers <- MemoryTimer(
+  silent = FALSE, csv_path = OUTPUT_PATH_TIME, summary_unit = "ms",
+  csv_columns = list(library = "seurat", test = "manipulation",
+                     dataset = DATA_NAME))
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "manipulation", paste0("data_", DATA_NAME))
@@ -106,15 +109,5 @@ timers$with_timer("Concatenate objects", {
   data <- merge(data_split[[1]], y = data_split[-1])
 })
 
-# Save timings
-timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library <- "seurat"
-timers_df$test <- "manipulation"
-timers_df$dataset <- DATA_NAME
-write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
-
-timers$print_summary(unit = "ms")
-
-if (!any(timers_df$aborted)) {
-  cat("--- Completed successfully ---\n")
-}
+timers$shutdown()
+cat("--- Completed successfully ---\n")

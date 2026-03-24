@@ -11,8 +11,10 @@ results <- list.files(
   map(fread) %>% rbindlist(fill = TRUE) %>% as_tibble()
 
 grp <- list(
-  order = c("Seurat", "scanpy", "brisc (ST)", "brisc (MT)"),
+  order = c("Seurat", "scanpy", "rapids (1 GPU)", "rapids (4 GPU)",
+            "brisc (ST)", "brisc (MT)"),
   colors = c("brisc (MT)" = "#d62728", "brisc (ST)" = "#e8726a",
+             "rapids (1 GPU)" = "#9467bd", "rapids (4 GPU)" = "#7b4fba",
              "scanpy" = "#8fbc8f", "Seurat" = "#a8c4dc"))
 
 datasets <- c("SEAAD", "PBMC", "PANSCI")
@@ -71,6 +73,8 @@ prepared <- results %>%
     group = case_when(
       library == "brisc" & num_threads == -1 ~ "brisc (MT)",
       library == "brisc" ~ "brisc (ST)",
+      library == "rapids" ~ "rapids (1 GPU)",
+      library == "rapids_mg" ~ "rapids (4 GPU)",
       library == "scanpy" ~ "scanpy",
       .default = "Seurat") %>%
       factor(levels = grp$order))

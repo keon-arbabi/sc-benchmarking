@@ -2,6 +2,9 @@ import sys
 import numpy as np
 import polars as pl
 import scanpy as sc
+import rapids_singlecell as rsc
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
@@ -17,14 +20,16 @@ if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
-    print('scanpy basic')
+    print('rapids basic')
     print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
-        csv_columns={'library': 'scanpy', 'test': 'basic',
+        csv_columns={'library': 'rapids', 'test': 'basic',
                      'dataset': DATA_NAME})
 
+    # Load and QC on CPU, then transfer filtered data to GPU
+    # (raw data too large for single GPU VRAM; driver 535 breaks managed memory)
     with timers('Load data'):
         data = sc.read_h5ad(DATA_PATH)
 
@@ -37,44 +42,47 @@ if __name__ == '__main__':
                 (data.obs['pct_counts_mt'].values <= 5) &
                 (data.obs['pct_counts_malat1'].values > 0))
         data = data[keep].copy()
+        rsc.get.anndata_to_GPU(data)
 
     with timers('Normalization'):
-        sc.pp.normalize_total(data)
-        sc.pp.log1p(data)
+        rsc.pp.normalize_total(data)
+        rsc.pp.log1p(data)
 
     with timers('Feature selection'):
-        sc.pp.highly_variable_genes(
+        rsc.pp.highly_variable_genes(
             data, n_top_genes=2000, batch_key='donor')
 
     with timers('PCA'):
-        sc.tl.pca(data)
+        rsc.tl.pca(data)
 
     with timers('Nearest neighbors'):
-        sc.pp.neighbors(data)
+        rsc.pp.neighbors(data)
 
     with timers('Embedding'):
-        sc.tl.umap(data)
+        rsc.tl.umap(data)
 
     with timers('Clustering'):
         for res in [0.25, 0.5, 1.0, 1.5, 2.0]:
-            sc.tl.leiden(
+            rsc.tl.leiden(
                 data,
                 resolution=res,
-                flavor='igraph', # Future default
-                n_iterations=2, # Future default
                 key_added=f'leiden_res_{res:4.2f}')
 
     with timers('Plot embedding'):
+        rsc.get.anndata_to_CPU(data)
         sc.pl.umap(
             data, color='cell_type')
         plt.savefig(
-            f'sc-benchmarking/figures/scanpy_embedding_{DATA_NAME}.png',
+            f'sc-benchmarking/figures/rapids_embedding_{DATA_NAME}.png',
             bbox_inches='tight', dpi=300)
+        rsc.get.anndata_to_GPU(data)
 
-    # Default method='t-test'
-    # Wilcoxon requires O(n log n) ranking per gene, infeasible at scale
+    # GPU-native logreg; scanpy uses t-test
     with timers('Find markers'):
-        sc.tl.rank_genes_groups(data, groupby='cell_type')
+        rsc.tl.rank_genes_groups_logreg(data, groupby='cell_type')
+
+    # Move back to CPU for output
+    rsc.get.anndata_to_CPU(data)
 
     # Save PCs
     pcs = data.obsm['X_pca']

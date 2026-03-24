@@ -22,7 +22,9 @@ cat("--- Params ---\n")
 cat("seurat de deseq\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
-timers <- MemoryTimer(silent = FALSE)
+timers <- MemoryTimer(
+  silent = FALSE, csv_path = OUTPUT_PATH_TIME,
+  csv_columns = list(library = "seurat", test = "de", dataset = DATA_NAME))
 
 # BPCells native functions required:
 # Loading from h5ad and writing to disk
@@ -103,17 +105,8 @@ de_df <- do.call(rbind, lapply(names(de_list), function(ct) {
 }))
 write.csv(de_df, OUTPUT_PATH_DE, row.names = FALSE)
 
-timers$print_summary(unit = "s")
-
-timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library <- "seurat"
-timers_df$test <- "de"
-timers_df$dataset <- DATA_NAME
-write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
-
-if (!any(timers_df$aborted)) {
-  cat("--- Completed successfully ---\n")
-}
+timers$shutdown()
+cat("--- Completed successfully ---\n")
 
 cat("\n--- Session Info ---\n")
 print(sessionInfo())

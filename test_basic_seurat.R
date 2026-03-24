@@ -20,7 +20,9 @@ cat("--- Params ---\n")
 cat("seurat basic\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
-timers <- MemoryTimer(silent = FALSE)
+timers <- MemoryTimer(
+  silent = FALSE, csv_path = OUTPUT_PATH_TIME,
+  csv_columns = list(library = "seurat", test = "basic", dataset = DATA_NAME))
 
 bpcells_dir <- file.path(
   Sys.getenv("SCRATCH"), "bpcells", "basic", paste0("data_", DATA_NAME))
@@ -74,7 +76,7 @@ timers$with_timer("Nearest neighbors", {
 # Seurat::FindClusters (Louvain, 10 random starts, single-threaded)
 # scales poorly as community count grows
 timers$with_timer("Clustering", {
-  for (resolution in c(0.5, 1, 2)) {
+  for (resolution in c(0.25, 0.5, 1, 1.5, 2)) {
     cl <- cluster_graph_leiden(snn, resolution = resolution)
     data[[paste0("clusters_", format(resolution, nsmall = 1))]] <-
       as.character(cl)
@@ -119,24 +121,16 @@ embedding_df <- data.frame(
   embed_2 = Embeddings(data, "umap")[, 2],
   cell_type = data$cell_type,
   cell_type_broad = data$cell_type_broad,
+  cluster_res_0.25 = data$clusters_0.25,
   cluster_res_0.5 = data$clusters_0.5,
   cluster_res_1.0 = data$clusters_1.0,
+  cluster_res_1.5 = data$clusters_1.5,
   cluster_res_2.0 = data$clusters_2.0
 )
 write.csv(embedding_df, OUTPUT_PATH_EMBEDDING, row.names = FALSE)
 
-# Save timings
-timers_df <- timers$to_dataframe(unit = "s", sort = FALSE)
-timers_df$library <- "seurat"
-timers_df$test <- "basic"
-timers_df$dataset <- DATA_NAME
-write.csv(timers_df, OUTPUT_PATH_TIME, row.names = FALSE)
-
-timers$print_summary(unit = "s")
-
-if (!any(timers_df$aborted)) {
-  cat("--- Completed successfully ---\n")
-}
+timers$shutdown()
+cat("--- Completed successfully ---\n")
 
 cat("\n--- Session Info ---\n")
 print(sessionInfo())

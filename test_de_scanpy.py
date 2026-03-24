@@ -21,7 +21,10 @@ if __name__ == '__main__':
     print('scanpy de deseq')
     print(f'{DATA_PATH=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'scanpy', 'test': 'de',
+                     'dataset': DATA_NAME})
 
     with timers('Load data'):
         data_sc = sc.read_h5ad(DATA_PATH)
@@ -85,18 +88,8 @@ if __name__ == '__main__':
         for ct, df in de.items()])
     de_df.write_csv(OUTPUT_PATH_DE)
 
-    timers.print_summary(unit='s')
-
-    timers_df = timers\
-        .to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('scanpy').alias('library'),
-            pl.lit('de').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'),)
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')
 
     print('\n--- Session Info ---')
     sc.logging.print_header()

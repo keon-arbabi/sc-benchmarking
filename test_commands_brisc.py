@@ -20,7 +20,10 @@ if __name__ == '__main__':
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
-    timers = MemoryTimer(silent=False)
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME, summary_unit='ms',
+        csv_columns={'library': 'brisc', 'test': 'manipulation',
+                     'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
     # Setup
     data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
@@ -88,17 +91,5 @@ if __name__ == '__main__':
     with timers('Copy object'):
         data_copy = data.copy(deep=True)
 
-    # Save timings
-    timers_df = timers\
-        .to_dataframe(sort=False, unit='s')\
-        .with_columns(
-            pl.lit('brisc').alias('library'),
-            pl.lit('manipulation').alias('test'),
-            pl.lit(DATA_NAME).alias('dataset'),
-            pl.lit(NUM_THREADS).alias('num_threads'))
-    timers_df.write_csv(OUTPUT_PATH_TIME)
-
-    timers.print_summary(unit='ms')
-
-    if not any(timers_df['aborted']):
-        print('--- Completed successfully ---')
+    timers.shutdown()
+    print('--- Completed successfully ---')
