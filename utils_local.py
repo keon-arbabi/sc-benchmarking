@@ -22,6 +22,11 @@ _MONITOR_MEM_SH_PATH = os.path.join(
 POLLING_INTERVAL = '0.05'
 
 class MemoryTimer:
+    _TIME_CONVERSIONS = {
+        's': 1, 'ms': 1000, 'us': 1e6, 'µs': 1e6,
+        'ns': 1e9, 'm': 1/60, 'h': 1/3600, 'd': 1/86400
+    }
+
     def __init__(self, silent=True, csv_path=None, csv_columns=None,
                  unit='s', summary_unit=None):
         import atexit
@@ -48,99 +53,104 @@ class MemoryTimer:
         def timer():
             if not self.silent:
                 print(f'{message}...', flush=True)
-            # Write monitor output to a temp file instead of a pipe.
-            # The 64 KB pipe buffer fills during long operations (the
-            # main thread is busy and never reads), blocking the monitor
-            # and missing late peaks.
-            tmpf = tempfile.NamedTemporaryFile(
-                prefix='memmon_', suffix='.csv', delete=False)
-            tmpf.close()
-            stdout_file = open(tmpf.name, 'w')
-            monitor = subprocess.Popen(
-                [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
-                stdout=stdout_file
-            )
-            stdout_file.close()
-            # Sync: wait for first sample (file must have content)
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                if os.path.getsize(tmpf.name) > 0:
-                    break
-                time.sleep(0.005)
+            monitor, tmpf_path = self._start_monitor(pid)
             start = default_timer()
             aborted = False
             try:
                 yield
-            except BaseException as e:
+            except BaseException:
                 aborted = True
-                raise e
+                raise
             finally:
                 duration = default_timer() - start
-                # Stop monitor and read output from temp file
-                try:
-                    monitor.terminate()
-                    monitor.wait(timeout=5)
-                except ProcessLookupError:
-                    pass
-                except subprocess.TimeoutExpired:
-                    monitor.kill()
-                    monitor.wait()
-                try:
-                    with open(tmpf.name) as f:
-                        output = f.read().strip()
-                except OSError:
-                    output = ''
-                finally:
-                    try:
-                        os.unlink(tmpf.name)
-                    except OSError:
-                        pass
-                if not output:
-                    data = np.array([[0.0, 0.0]])
-                else:
-                    try:
-                        data = np.loadtxt(
-                            io.StringIO(output), delimiter=',')
-                    except ValueError:
-                        data = np.array([[0.0, 0.0]])
-
-                if data.size == 0:
-                    data = np.array([[0.0, 0.0]])
-                elif data.ndim == 1:
-                    data = data[None, :]
-
-                max_mem = np.max(data, axis=0)
-                memory_gb = np.round(max_mem[0] / 1024 / 1024, 2)
-                percent_mem = np.round(max_mem[1], 2)
-
+                memory_gb, percent_mem = self._stop_monitor(monitor, tmpf_path)
                 if not self.silent:
                     status = 'aborted after' if aborted else 'took'
                     time_str = self._format_time(duration)
                     print(f'{message} {status} {time_str} using '
                           f'{memory_gb} GiB\n', flush=True)
-
-                # Update or create timing entry
-                if message in self.timings:
-                    self.timings[message]['duration'] += duration
-                    self.timings[message]['memory'] = max(
-                        self.timings[message]['memory'], memory_gb
-                    )
-                    self.timings[message]['%mem'] = max(
-                        self.timings[message]['%mem'], percent_mem
-                    )
-                    self.timings[message]['aborted'] = (
-                        self.timings[message]['aborted'] or aborted
-                    )
-                else:
-                    self.timings[message] = {
-                        'duration': duration,
-                        'memory': memory_gb,
-                        '%mem': percent_mem,
-                        'aborted': aborted,
-                    }
+                self._record(message, duration, memory_gb, percent_mem,
+                             aborted)
                 gc.collect()
 
         return timer()
+
+    def _start_monitor(self, pid):
+        # Write monitor output to a temp file instead of a pipe.
+        # The 64 KB pipe buffer fills during long operations (the
+        # main thread is busy and never reads), blocking the monitor
+        # and missing late peaks.
+        tmpf = tempfile.NamedTemporaryFile(
+            prefix='memmon_', suffix='.csv', delete=False)
+        tmpf.close()
+        stdout_file = open(tmpf.name, 'w')
+        monitor = subprocess.Popen(
+            [_MONITOR_MEM_SH_PATH, '-p', str(pid), '-i', POLLING_INTERVAL],
+            stdout=stdout_file
+        )
+        stdout_file.close()
+        # Sync: wait for first sample (file must have content)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if os.path.getsize(tmpf.name) > 0:
+                break
+            time.sleep(0.005)
+        return monitor, tmpf.name
+
+    def _stop_monitor(self, monitor, tmpf_path):
+        try:
+            monitor.terminate()
+            monitor.wait(timeout=5)
+        except ProcessLookupError:
+            pass
+        except subprocess.TimeoutExpired:
+            monitor.kill()
+            monitor.wait()
+        try:
+            with open(tmpf_path) as f:
+                output = f.read().strip()
+        except OSError:
+            output = ''
+        finally:
+            try:
+                os.unlink(tmpf_path)
+            except OSError:
+                pass
+
+        if not output:
+            data = np.array([[0.0, 0.0]])
+        else:
+            try:
+                data = np.loadtxt(io.StringIO(output), delimiter=',')
+            except ValueError:
+                data = np.array([[0.0, 0.0]])
+
+        if data.size == 0:
+            data = np.array([[0.0, 0.0]])
+        elif data.ndim == 1:
+            data = data[None, :]
+
+        max_mem = np.max(data, axis=0)
+        memory_gb = np.round(max_mem[0] / 1024 / 1024, 2)
+        percent_mem = np.round(max_mem[1], 2)
+        return memory_gb, percent_mem
+
+    def _record(self, message, duration, memory_gb, percent_mem, aborted):
+        if message in self.timings:
+            self.timings[message]['duration'] += duration
+            self.timings[message]['memory'] = max(
+                self.timings[message]['memory'], memory_gb)
+            self.timings[message]['%mem'] = max(
+                self.timings[message]['%mem'], percent_mem)
+            self.timings[message]['aborted'] = (
+                self.timings[message]['aborted'] or aborted)
+        else:
+            self.timings[message] = {
+                'duration': duration,
+                'memory': memory_gb,
+                '%mem': percent_mem,
+                'aborted': aborted,
+            }
 
     def shutdown(self):
         # Write timing summary and CSV. No-op if already called.
@@ -191,13 +201,9 @@ class MemoryTimer:
 
     def _format_time(self, duration, unit=None):
         if unit:
-            conversions = {
-                's': 1, 'ms': 1000, 'us': 1e6, 'µs': 1e6,
-                'ns': 1e9, 'm': 1/60, 'h': 1/3600, 'd': 1/86400
-            }
-            if unit not in conversions:
+            if unit not in self._TIME_CONVERSIONS:
                 raise ValueError(f'Unsupported unit: {unit}')
-            return f'{duration * conversions[unit]:.2f}{unit}'
+            return f'{duration * self._TIME_CONVERSIONS[unit]:.2f}{unit}'
 
         units = [
             (86400, 'd'), (3600, 'h'), (60, 'm'), (1, 's'),
@@ -235,13 +241,9 @@ class MemoryTimer:
 
         conv = 1.0
         if unit:
-            conversions = {
-                's': 1, 'ms': 1000, 'us': 1e6, 'µs': 1e6,
-                'ns': 1e9, 'm': 1/60, 'h': 1/3600, 'd': 1/86400
-            }
-            if unit not in conversions:
+            if unit not in self._TIME_CONVERSIONS:
                 raise ValueError(f'Unsupported unit: {unit}')
-            conv = conversions[unit]
+            conv = self._TIME_CONVERSIONS[unit]
 
         rows = [
             {
@@ -310,58 +312,37 @@ def system_info():
 
     print(flush=True)
 
-def run_slurm(command, job_name, log_file, CPUs=1, gpus_per_node=0, hours=1,
-              memory='0', account='def-wainberg', dependency=None, env=None):
+def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
+              memory='0', hours=24, minutes=None, account='def-shreejoy'):
     from tempfile import NamedTemporaryFile
-
-    cluster = os.environ.get('CLUSTER')
-    runtime = f'{hours}:00:00'
     job_name = job_name.replace(' ', '_')
-
+    cluster = os.environ.get('CLUSTER')
+    partition = ''
+    if cluster in ('trillium', 'niagara') and GPUs == 0:
+        partition = '#SBATCH -p compute\n'
+    gpu_line = ''
+    if GPUs > 0:
+        gpu_line = f'#SBATCH --gpus-per-node={gpu_type}:{GPUs}\n'
     try:
         with NamedTemporaryFile(
                 'w', dir=os.environ.get('SCRATCH', '.'),
                 suffix='.sh', delete=False) as temp_file:
-
-            partition = ''
-            if cluster in ('trillium', 'niagara') and gpus_per_node == 0:
-                partition = '#SBATCH -p compute\n'
-
-            memory_line = ''
-            if memory != '0':
-                memory_line = f'#SBATCH --mem {memory}\n'
-
-            dependency_line = ''
-            if dependency:
-                dependency_line = f'#SBATCH --dependency=afterok:{dependency}\n'
-
-            gpu_line = ''
-            if gpus_per_node > 0:
-                gpu_line = f'#SBATCH --gpus-per-node={gpus_per_node}\n'
-
-            env_lines = ''
-            if env:
-                env_lines = ''.join(
-                    f'export {k}={v}\n' for k, v in env.items())
-
             print(
                 f'#!/bin/bash\n'
                 f'{partition}'
                 f'#SBATCH -A {account}\n'
                 f'#SBATCH -N 1\n'
                 f'#SBATCH -n {CPUs}\n'
-                f'{memory_line}'
+                f'#SBATCH --mem={memory}\n'
                 f'{gpu_line}'
-                f'{dependency_line}'
-                f'#SBATCH -t {runtime}\n'
-                f'#SBATCH --signal=B:TERM@30\n'
+                f'#SBATCH -t {f"0:{minutes}:00" if minutes else f"{hours}:00:00"}\n'
                 f'#SBATCH -J {job_name}\n'
                 f'#SBATCH -o {log_file}\n'
+                f'#SBATCH --signal=B:TERM@30\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'export PYTHONUNBUFFERED=1\n'
-                f'{env_lines}'
                 f'set -m\n'
-                f'{command} &\n'
+                f'{cmd} &\n'
                 f'CHILD=$!\n'
                 f'trap "kill -INT -$CHILD 2>/dev/null; '
                 f'wait $CHILD 2>/dev/null; exit \\$?" TERM\n'

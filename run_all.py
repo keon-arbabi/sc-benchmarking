@@ -1,6 +1,5 @@
 import os
 import sys
-import glob
 sys.path.append('sc-benchmarking')
 from utils_local import run_slurm
 
@@ -10,14 +9,13 @@ WORK_DIR = 'sc-benchmarking'
 OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
 FIGURES_DIR = os.path.join(WORK_DIR, 'figures')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
-PYTHON = '/home/wainberg/bin/python3.13'
-PYTHON_RAPIDS = '/home/karbabi/miniforge3/envs/rapids/bin/python'
-NVIDIA_LIBS = ':'.join(sorted(set(
-    os.path.dirname(p) for p in glob.glob(
-        '/home/karbabi/miniforge3/envs/rapids/lib/python3.13'
-        '/site-packages/nvidia/**/lib*/*.so*', recursive=True))))
-RSCRIPT = '/home/wainberg/bin/Rscript-4.5.1'
+RSCRIPT = '/home/wainberg/bin/Rscript-4.5.3'
+PYTHON = '/home/wainberg/bin/python3.14'
+PYTHON_RAPIDS = '/home/karbabi/miniforge3/bin/python'
 
 DATASETS = {
     'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
@@ -42,11 +40,17 @@ SCRIPTS = [
     ('test_commands_seurat.R', 'seurat', 'commands', None),
 ]
 
-if __name__ == '__main__':
+OUTPUTS = {
+    'basic': ['embedding', 'pcs', 'neighbors'],
+    'de': ['de'],
+    'transfer': ['accuracy'],
+    'commands': [],
+}
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-    os.makedirs(FIGURES_DIR, exist_ok=True)
+def out(job_name, suffix):
+    return os.path.join(OUTPUT_DIR, f'{job_name}_{suffix}.csv')
+
+if __name__ == '__main__':
 
     for script_file, tool, task, thread_params in SCRIPTS:
         if script_file.endswith('.R'):
@@ -56,22 +60,17 @@ if __name__ == '__main__':
         else:
             interpreter = PYTHON
         script_path = os.path.join(WORK_DIR, script_file)
-        is_basic = task == 'basic'
-        is_de = task.startswith('de')
-        is_transfer = task == 'transfer'
 
         for d_name, d_path in DATASETS.items():
-
             for threads in (thread_params or [None]):
-                job_parts = [(task.replace('_', f'_{tool}_', 1) if '_' in task
-                              else f'{task}_{tool}'), d_name]
+                parts = [f'{task}_{tool}', d_name]
                 if threads is not None:
-                    job_parts.append(str(threads))
-                job_name = '_'.join(job_parts)
+                    parts.append(str(threads))
+                job_name = '_'.join(parts)
 
                 log = os.path.join(LOG_DIR, f'{job_name}.log')
                 if os.path.exists(log):
-                    with open(log, 'r') as f:
+                    with open(log) as f:
                         if 'Completed successfully' in f.read():
                             print(f'Skipping completed job: {job_name}')
                             continue
@@ -79,36 +78,13 @@ if __name__ == '__main__':
                 cmd = [interpreter, script_path, d_name, d_path]
                 if threads is not None:
                     cmd.append(str(threads))
-                cmd.append(os.path.join(OUTPUT_DIR, f'{job_name}_timer.csv'))
-                if is_basic:
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{job_name}_embedding.csv'))
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{job_name}_pcs.csv'))
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{job_name}_neighbors.csv'))
-                if is_de:
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{job_name}_de.csv'))
-                if is_transfer:
-                    cmd.append(os.path.join(
-                        OUTPUT_DIR, f'{job_name}_accuracy.csv'))
+                cmd.append(out(job_name, 'timer'))
+                cmd.extend(out(job_name, s) for s in OUTPUTS[task])
 
                 is_gpu = tool == 'rapids'
-                env = {'PYTHONPATH': f'{os.getcwd()}:$PYTHONPATH'}
-                if is_gpu:
-                    env['PIP_CONFIG_FILE'] = '/dev/null'
-                    env['PYTHONPATH'] = os.getcwd()
-                    env['LD_LIBRARY_PATH'] = (
-                        NVIDIA_LIBS + ':$LD_LIBRARY_PATH')
-                    env['CUPY_CACHE_DIR'] = '$SCRATCH/.cupy'
-
-                job_id = run_slurm(
-                    ' '.join(cmd), job_name=job_name, log_file=log,
-                    # account='def-wainberg',
-                    account='def-shreejoy',
-                    # account='rrg-shreejoy',
-                    CPUs=96 if is_gpu else 192,
-                    gpus_per_node=4 if is_gpu else 0,
-                    hours=24,
-                    env=env)
+                run_slurm(
+                    ' '.join(cmd),
+                    job_name=job_name, log_file=log,
+                    CPUs=112 if is_gpu else 192,
+                    GPUs=8 if is_gpu else 0,
+                    hours=24)

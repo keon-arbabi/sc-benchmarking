@@ -1,19 +1,25 @@
+import os
 import gc
 import sys
+import h5py
 import numpy as np
 import polars as pl
 import scanpy as sc
 import anndata as ad
+import matplotlib.pyplot as plt
+sys.path.append('sc-benchmarking')
+from utils_local import MemoryTimer, system_info
+
+import warnings
+warnings.filterwarnings('ignore', message='DataFrame is highly fragmented')
+
+os.environ.setdefault('CUDA_PATH', os.path.join(
+    os.path.dirname(os.__file__), 'site-packages', 'nvidia', 'cuda_runtime'))
+
 import rapids_singlecell as rsc
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
 from packaging.version import parse as parse_version
-import h5py
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-sys.path.append('sc-benchmarking')
-from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
@@ -31,11 +37,11 @@ if __name__ == '__main__':
     print('rapids basic')
     print(f'{DATA_PATH=}')
 
-    # Multi-GPU Dask cluster with RMM pool allocators
     cluster = LocalCUDACluster(
+        threads_per_worker=10,
         protocol='ucx',
         rmm_pool_size='10GB',
-        rmm_maximum_pool_size='70GB',
+        rmm_maximum_pool_size='110GB',
         rmm_allocator_external_lib_list='cupy',
     )
     client = Client(cluster)
@@ -86,22 +92,21 @@ if __name__ == '__main__':
         rsc.pp.highly_variable_genes(
             data, n_top_genes=2000, batch_key='donor')
         data = data[:, data.var.highly_variable].copy()
-        # Rechunk evenly across workers
-        n_workers = len(client.scheduler_info()['workers'])
-        rows_per_worker = (data.shape[0] + n_workers - 1) // n_workers
-        data.X = data.X.rechunk(
-            (rows_per_worker, data.shape[1])).persist()
-        data.X.compute_chunk_sizes()
 
     with timers('PCA'):
+        n_workers = len(client.scheduler_info()['workers'])
+        rows_per_worker = (data.shape[0] + n_workers - 1) // n_workers
+        data.X = data.X.rechunk((rows_per_worker, data.shape[1])).persist()
+        data.X.compute_chunk_sizes()
+
         rsc.tl.pca(data, n_comps=50, mask_var=None)
         data.obsm['X_pca'] = data.obsm['X_pca'].persist()
         data.obsm['X_pca'].compute_chunk_sizes()
         data.obsm['X_pca'] = data.obsm['X_pca'].compute()
 
     with timers('Nearest neighbors'):
-        rsc.pp.neighbors(data, n_neighbors=15, n_pcs=50,
-                         algorithm='mg_ivfflat')
+        rsc.pp.neighbors(
+            data, n_neighbors=15, n_pcs=50, algorithm='mg_ivfflat')
 
     with timers('Embedding'):
         rsc.tl.umap(data)

@@ -8,6 +8,11 @@ suppressPackageStartupMessages({
 
 POLLING_INTERVAL <- '0.05'
 
+.TIME_CONVERSIONS <- c(
+  "s" = 1, "ms" = 1000, "us" = 1e6, "\u00b5s" = 1e6,
+  "ns" = 1e9, "m" = 1/60, "h" = 1/3600, "d" = 1/86400
+)
+
 MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
                        unit = "s", summary_unit = NULL) {
   env = environment()
@@ -112,12 +117,15 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
       }
       gc()
     })
-    # Re-throw after cleanup
+    # Re-throw after cleanup, preserving the original condition class.
+    # stop() only accepts error conditions; for interrupts use the
+    # base calling handler approach.
     if (!is.null(error_obj)) {
-      if (inherits(error_obj, "interrupt")) {
-        stop("Interrupted by signal")
-      } else {
+      if (inherits(error_obj, "error")) {
         stop(error_obj)
+      } else {
+        # interrupt or other non-error condition
+        signalCondition(error_obj)
       }
     }
 
@@ -128,12 +136,9 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
     duration = as.numeric(duration)
 
     if (!is.null(unit)) {
-      converted = switch(unit,
-        "s" = duration, "ms" = duration * 1000,
-        "us" = duration * 1000000, "µs" = duration * 1000000,
-        "ns" = duration * 1000000000, "m" = duration / 60,
-        "h" = duration / 3600, "d" = duration / 86400,
-        stop("Unsupported unit: ", unit))
+      if (!(unit %in% names(.TIME_CONVERSIONS)))
+        stop("Unsupported unit: ", unit)
+      converted = duration * .TIME_CONVERSIONS[[unit]]
       return(paste0(format(converted, scientific = FALSE), unit))
     }
 
@@ -262,12 +267,9 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
     durs = sapply(items, function(msg) env$timings[[msg]]$duration)
 
     if (!is.null(unit)) {
-      durs = switch(unit,
-        "s" = durs, "ms" = durs * 1000,
-        "us" = durs * 1000000, "µs" = durs * 1000000,
-        "ns" = durs * 1000000000, "m" = durs / 60,
-        "h" = durs / 3600, "d" = durs / 86400,
-        stop("Unsupported unit: ", unit))
+      if (!(unit %in% names(.TIME_CONVERSIONS)))
+        stop("Unsupported unit: ", unit)
+      durs = durs * .TIME_CONVERSIONS[[unit]]
       duration_unit = unit
     } else {
       duration_unit = "s"
@@ -337,20 +339,19 @@ system_info <- function() {
   cpu_task <- Sys.getenv("SLURM_CPUS_PER_TASK")
   cpu_cores <- Sys.getenv("SLURM_CPUS_ON_NODE")
 
-     if (nchar(cpu_task) > 0) {
-     cpu_cores <- cpu_task
-   } else if (nchar(cpu_cores) == 0) {
-     # Fallback to system detection
-     tryCatch({
-       if (requireNamespace("parallel", quietly = TRUE)) {
-         cpu_cores <- parallel::detectCores()
-       } else {
-         cpu_cores <- "N/A"
-       }
-     }, error = function(e) {
-       cpu_cores <<- "N/A"
-     })
-   }
+  if (nchar(cpu_task) > 0) {
+    cpu_cores <- cpu_task
+  } else if (nchar(cpu_cores) == 0) {
+    tryCatch({
+      if (requireNamespace("parallel", quietly = TRUE)) {
+        cpu_cores <- parallel::detectCores()
+      } else {
+        cpu_cores <- "N/A"
+      }
+    }, error = function(e) {
+      cpu_cores <<- "N/A"
+    })
+  }
 
   # Get Memory
   mem_gb_str <- "N/A"

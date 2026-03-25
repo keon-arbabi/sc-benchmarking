@@ -58,7 +58,7 @@ sc = sc\
         pl.col('pmi')
             .cast(pl.String).cast(pl.Float32, strict=False),
         pl.col('sample').alias('donor'),
-        pl.col('is_ref').cast(pl.UInt8))\
+        pl.col('is_ref').cast(pl.String).eq('True').cast(pl.UInt8))\
     .select_obs(cols)\
     .rename_var({'gene_ids': 'gene_symbol'})\
     .set_var_names('gene_symbol')\

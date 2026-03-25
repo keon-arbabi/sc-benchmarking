@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
+import warnings
+warnings.filterwarnings('ignore', message='DataFrame is highly fragmented')
+
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 OUTPUT_PATH_TIME = sys.argv[3]

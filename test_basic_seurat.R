@@ -1,6 +1,7 @@
 suppressPackageStartupMessages({
   library(BPCells)
   library(Seurat)
+  library(presto)
   library(ggplot2)
 })
 

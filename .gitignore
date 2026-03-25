@@ -1,4 +1,11 @@
+figures
 figures/
+figures/**
+output
 output/
+output/**
+logs
 logs/
+logs/**
 __pycache__/
+__pycache__/**
