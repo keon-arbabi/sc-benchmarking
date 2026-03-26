@@ -8,7 +8,8 @@ import polars as pl
 import scanpy as sc
 import anndata as ad
 import matplotlib.pyplot as plt
-sys.path.append('sc-benchmarking')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils_local import MemoryTimer, system_info
 
 os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')
@@ -19,22 +20,14 @@ import rapids_singlecell as rsc
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
 
-# DATA_NAME = sys.argv[1]
-# DATA_PATH = sys.argv[2]
-# OUTPUT_PATH_TIME = sys.argv[3]
-# OUTPUT_PATH_EMBEDDING = sys.argv[4]
-# OUTPUT_PATH_PCS = sys.argv[5]
-# OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+DATA_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH_TIME = sys.argv[3]
+OUTPUT_PATH_EMBEDDING = sys.argv[4]
+OUTPUT_PATH_PCS = sys.argv[5]
+OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
-# rapids
-DATA_NAME = 'PANSCI'
-DATA_PATH = 'single-cell/PanSci/PanSci_raw.h5ad'
-OUTPUT_PATH_TIME = 'sc-benchmarking/output/basic_rapids_PANSCI_timer.csv'
-OUTPUT_PATH_EMBEDDING = 'sc-benchmarking/output/basic_rapids_PANSCI_embedding.csv'
-OUTPUT_PATH_PCS = 'sc-benchmarking/output/basic_rapids_PANSCI_pcs.csv'
-OUTPUT_PATH_NEIGHBORS = 'sc-benchmarking/output/basic_rapids_PANSCI_neighbors.csv'
-
-CHUNK_SIZE = 20_000
+CHUNK_SIZE = 50_000
 
 if __name__ == '__main__':
 
@@ -47,7 +40,6 @@ if __name__ == '__main__':
         threads_per_worker=10,
         protocol='ucx',
         rmm_pool_size='10GB',
-        rmm_maximum_pool_size='110GB',
         rmm_allocator_external_lib_list='cupy',
         silence_logs=logging.ERROR,
     )
@@ -128,6 +120,8 @@ if __name__ == '__main__':
     with timers('Find markers'):
         rsc.tl.rank_genes_groups(
             data, groupby='cell_type', method='logreg', use_raw=False)
+
+    rsc.get.anndata_to_CPU(data)
 
     # Save PCs
     pcs = data.obsm['X_pca']

@@ -1,14 +1,21 @@
 import os
 import gc
+import sys
+from pathlib import Path
 import polars as pl
-from utils import run
+
+_PROJECT_DIR = Path(__file__).resolve().parent
+_HOME_DIR = _PROJECT_DIR.parent
+sys.path.insert(0, str(_PROJECT_DIR))
+sys.path.insert(0, str(_HOME_DIR))
 from single_cell import SingleCell
+from utils_local import run
 
 # SEAAD
 # https://doi.org/10.21203/rs.3.rs-2921860/v1
 # https://sea-ad-single-cell-profiling.s3.amazonaws.com/index.html
 
-dir_data = 'single-cell/SEAAD'
+dir_data = str(_HOME_DIR / 'single-cell' / 'SEAAD')
 os.makedirs(dir_data, exist_ok=True)
 
 file_data = f'{dir_data}/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad'
@@ -115,7 +122,7 @@ del sc; gc.collect()
 # https://www.biorxiv.org/content/10.64898/2025.12.12.693897v1
 # https://www.parsebiosciences.com/datasets/10-million-human-pbmcs-in-a-single-experiment/
 
-dir_data = 'single-cell/PBMC'
+dir_data = str(_HOME_DIR / 'single-cell' / 'PBMC')
 os.makedirs(dir_data, exist_ok=True)
 
 file_data = f'{dir_data}/Parse_PBMC_cytokines.h5ad'
@@ -203,7 +210,7 @@ del sc; gc.collect()
 # https://pmc.ncbi.nlm.nih.gov/articles/PMC11910726/
 # https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE247719
 
-dir_data = 'single-cell/PanSci'
+dir_data = str(_HOME_DIR / 'single-cell' / 'PanSci')
 os.makedirs(dir_data, exist_ok=True)
 
 geo_base = 'https://ftp.ncbi.nlm.nih.gov/geo/series/GSE247nnn/GSE247719/suppl'

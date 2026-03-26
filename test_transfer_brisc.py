@@ -1,9 +1,11 @@
 import gc
 import sys
+from pathlib import Path
 
-sys.path.append('/home/karbabi')
+_PROJECT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_PROJECT_DIR))
+sys.path.insert(0, str(_PROJECT_DIR.parent))
 from single_cell import SingleCell
-sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 
 DATA_NAME = sys.argv[1]

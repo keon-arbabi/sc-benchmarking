@@ -6,7 +6,8 @@ import polars as pl
 import scanpy as sc
 from pydeseq2.ds import DeseqStats
 from pydeseq2.dds import DeseqDataSet, DefaultInference
-sys.path.append('sc-benchmarking')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]

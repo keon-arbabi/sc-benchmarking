@@ -1,15 +1,19 @@
 import os
 import sys
+from pathlib import Path
 import h5py
 import numpy as np
 import anndata as ad
-sys.path.append('/home/karbabi')
-from utils import run
+
+_PROJECT_DIR = Path(__file__).resolve().parent
+_HOME_DIR = _PROJECT_DIR.parent
+sys.path.insert(0, str(_PROJECT_DIR))
+from utils_local import run
 
 BASE_URL = 'https://storage.googleapis.com/arc-ctc-tahoe100/2025-02-25/h5ad'
 PLATE_TEMPLATE = 'plate{}_filt_Vevo_Tahoe100M_WServicesFrom_ParseGigalab.h5ad'
 NUM_PLATES = 14
-cache_path = 'single-cell/Tahoe-100M'
+cache_path = str(_HOME_DIR / 'single-cell' / 'Tahoe-100M')
 plates_dir = f'{cache_path}/plates'
 output_file = f'{cache_path}/Tahoe_100M.h5ad'
 os.makedirs(plates_dir, exist_ok=True)

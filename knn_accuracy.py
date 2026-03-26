@@ -1,10 +1,11 @@
 import os
 import time
+from pathlib import Path
 import faiss
 import numpy as np
 import polars as pl
 
-OUTPUT_DIR = 'sc-benchmarking/output'
+OUTPUT_DIR = str(Path(__file__).resolve().parent / 'output')
 DATASETS = ['SEAAD', 'PBMC']
 LIBRARIES = {
     'brisc': {

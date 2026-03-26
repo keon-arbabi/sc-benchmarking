@@ -5,7 +5,9 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = Inf)
-source("sc-benchmarking/utils_local.R")
+.script_dir <- dirname(normalizePath(sub("^--file=", "",
+  grep("^--file=", commandArgs(FALSE), value = TRUE)[1])))
+source(file.path(.script_dir, "utils_local.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 DATA_NAME <- args[1]

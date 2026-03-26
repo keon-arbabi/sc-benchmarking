@@ -2,7 +2,8 @@ import gc
 import sys
 
 import scanpy as sc
-sys.path.append('sc-benchmarking')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils_local import MemoryTimer, system_info, transfer_accuracy
 
 DATA_NAME = sys.argv[1]

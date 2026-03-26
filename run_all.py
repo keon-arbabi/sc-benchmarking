@@ -1,10 +1,14 @@
 import os
 import sys
-sys.path.append('sc-benchmarking')
+from pathlib import Path
+
+_PROJECT_DIR = Path(__file__).resolve().parent
+_HOME_DIR = _PROJECT_DIR.parent
+sys.path.insert(0, str(_PROJECT_DIR))
 from utils_local import run_slurm
 
-DATA_DIR = 'single-cell'
-WORK_DIR = 'sc-benchmarking'
+DATA_DIR = str(_HOME_DIR / 'single-cell')
+WORK_DIR = str(_PROJECT_DIR)
 
 OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
@@ -41,7 +45,7 @@ CPU_SCRIPTS = [
 
 GPU_SCRIPTS = [
     ('test_basic_rapids.py', 'rapids', 'basic', None),
-    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
 ]
 
 OUTPUTS = {

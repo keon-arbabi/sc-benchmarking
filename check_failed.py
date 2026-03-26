@@ -1,6 +1,7 @@
 import os
+from pathlib import Path
 
-LOG_DIR = os.path.join('sc-benchmarking', 'logs')
+LOG_DIR = str(Path(__file__).resolve().parent / 'logs')
 
 failed_jobs = []
 for log_file in os.listdir(LOG_DIR):

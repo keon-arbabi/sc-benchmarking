@@ -4,7 +4,8 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 
-work_dir <- "sc-benchmarking"
+work_dir <- dirname(normalizePath(sub("^--file=", "",
+  grep("^--file=", commandArgs(FALSE), value = TRUE)[1])))
 
 results <- list.files(
   file.path(work_dir, "output"), "_timer\\.csv$", full.names = TRUE) %>%

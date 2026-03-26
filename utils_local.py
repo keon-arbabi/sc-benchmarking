@@ -16,6 +16,23 @@ from contextlib import contextmanager
 from typing import ContextManager
 from tabulate import tabulate
 
+def run(cmd, *, log_file=None, unbuffered=False, pipefail=True,
+        num_threads=None, **kwargs):
+    run_kwargs = dict(check=True, shell=True, executable='/bin/bash')
+    run_kwargs.update(**kwargs)
+    thread_str = (
+        f'export MKL_NUM_THREADS={num_threads}; '
+        f'export OMP_NUM_THREADS={num_threads}; '
+        f'export OPENBLAS_NUM_THREADS={num_threads}; '
+        f'export NUMEXPR_MAX_THREADS={num_threads}; '
+        if num_threads is not None else '')
+    return subprocess.run(
+        f'{thread_str}'
+        f'set -eu{"o pipefail" if pipefail else ""}; '
+        f'{"stdbuf -i0 -o0 -e0 " if unbuffered else ""}{cmd}'
+        f'{f" 2>&1 | tee {log_file}" if log_file is not None else ""}',
+        **run_kwargs)
+
 _MONITOR_MEM_SH_PATH = os.path.join(
     os.path.dirname(__file__), 'monitor_mem.sh')
 
