@@ -5,13 +5,22 @@ from single_cell import SingleCell
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-DATA_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-NUM_THREADS = int(sys.argv[3])
-OUTPUT_PATH_TIME = sys.argv[4]
-OUTPUT_PATH_EMBEDDING = sys.argv[5]
-OUTPUT_PATH_PCS = sys.argv[6]
-OUTPUT_PATH_NEIGHBORS = sys.argv[7]
+# DATA_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# NUM_THREADS = int(sys.argv[3])
+# OUTPUT_PATH_TIME = sys.argv[4]
+# OUTPUT_PATH_EMBEDDING = sys.argv[5]
+# OUTPUT_PATH_PCS = sys.argv[6]
+# OUTPUT_PATH_NEIGHBORS = sys.argv[7]
+
+# brisc (-1 threads = all cores)
+DATA_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+NUM_THREADS = -1
+OUTPUT_PATH_TIME = f'sc-benchmarking/output/basic_brisc_SEAAD_{NUM_THREADS}_timer.csv'
+OUTPUT_PATH_EMBEDDING = f'sc-benchmarking/output/basic_brisc_SEAAD_{NUM_THREADS}_embedding.csv'
+OUTPUT_PATH_PCS = f'sc-benchmarking/output/basic_brisc_SEAAD_{NUM_THREADS}_pcs.csv'
+OUTPUT_PATH_NEIGHBORS = f'sc-benchmarking/output/basic_brisc_SEAAD_{NUM_THREADS}_neighbors.csv'
 
 if __name__ == '__main__':
 
@@ -50,11 +59,6 @@ if __name__ == '__main__':
 
     with timers('Embedding'):
         data = data.pacmap()
-
-    with timers('Plot embedding'):
-        data.plot_pacmap(
-            'cell_type',
-            f'sc-benchmarking/figures/brisc_embedding_{DATA_NAME}.png')
 
     with timers('Find markers'):
         markers = data.find_markers('cell_type')

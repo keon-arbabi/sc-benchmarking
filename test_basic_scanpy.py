@@ -9,12 +9,20 @@ from utils_local import MemoryTimer, system_info
 import warnings
 warnings.filterwarnings('ignore', message='DataFrame is highly fragmented')
 
-DATA_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-OUTPUT_PATH_TIME = sys.argv[3]
-OUTPUT_PATH_EMBEDDING = sys.argv[4]
-OUTPUT_PATH_PCS = sys.argv[5]
-OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+# DATA_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# OUTPUT_PATH_TIME = sys.argv[3]
+# OUTPUT_PATH_EMBEDDING = sys.argv[4]
+# OUTPUT_PATH_PCS = sys.argv[5]
+# OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+
+# scanpy
+DATA_NAME = 'SEAAD'
+DATA_PATH = 'single-cell/SEAAD/SEAAD_raw.h5ad'
+OUTPUT_PATH_TIME = 'sc-benchmarking/output/basic_scanpy_SEAAD_timer.csv'
+OUTPUT_PATH_EMBEDDING = 'sc-benchmarking/output/basic_scanpy_SEAAD_embedding.csv'
+OUTPUT_PATH_PCS = 'sc-benchmarking/output/basic_scanpy_SEAAD_pcs.csv'
+OUTPUT_PATH_NEIGHBORS = 'sc-benchmarking/output/basic_scanpy_SEAAD_neighbors.csv'
 
 if __name__ == '__main__':
 
@@ -66,13 +74,6 @@ if __name__ == '__main__':
                 flavor='igraph', # Future default
                 n_iterations=2, # Future default
                 key_added=f'leiden_res_{res:4.2f}')
-
-    with timers('Plot embedding'):
-        sc.pl.umap(
-            data, color='cell_type')
-        plt.savefig(
-            f'sc-benchmarking/figures/scanpy_embedding_{DATA_NAME}.png',
-            bbox_inches='tight', dpi=300)
 
     # Default method='t-test'
     # Wilcoxon requires O(n log n) ranking per gene, infeasible at scale

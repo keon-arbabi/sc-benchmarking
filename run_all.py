@@ -24,10 +24,9 @@ DATASETS = {
 }
 
 # (file, tool, task, thread_params)
-SCRIPTS = [
+CPU_SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    ('test_basic_rapids.py', 'rapids', 'basic', None),
     ('test_basic_seurat.R', 'seurat', 'basic', None),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
     ('test_de_scanpy.py', 'scanpy', 'de', None),
@@ -40,6 +39,11 @@ SCRIPTS = [
     ('test_commands_seurat.R', 'seurat', 'commands', None),
 ]
 
+GPU_SCRIPTS = [
+    ('test_basic_rapids.py', 'rapids', 'basic', None),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
+]
+
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
     'de': ['de'],
@@ -50,9 +54,8 @@ OUTPUTS = {
 def out(job_name, suffix):
     return os.path.join(OUTPUT_DIR, f'{job_name}_{suffix}.csv')
 
-if __name__ == '__main__':
-
-    for script_file, tool, task, thread_params in SCRIPTS:
+def run_jobs(scripts, is_gpu=False):
+    for script_file, tool, task, thread_params in scripts:
         if script_file.endswith('.R'):
             interpreter = RSCRIPT
         elif tool == 'rapids':
@@ -66,6 +69,8 @@ if __name__ == '__main__':
                 parts = [f'{task}_{tool}', d_name]
                 if threads is not None:
                     parts.append(str(threads))
+                if is_gpu:
+                    parts.append('gpu')
                 job_name = '_'.join(parts)
 
                 log = os.path.join(LOG_DIR, f'{job_name}.log')
@@ -81,10 +86,13 @@ if __name__ == '__main__':
                 cmd.append(out(job_name, 'timer'))
                 cmd.extend(out(job_name, s) for s in OUTPUTS[task])
 
-                is_gpu = tool == 'rapids'
                 run_slurm(
                     ' '.join(cmd),
                     job_name=job_name, log_file=log,
                     CPUs=112 if is_gpu else 192,
                     GPUs=8 if is_gpu else 0,
                     hours=24)
+
+if __name__ == '__main__':
+    # run_jobs(CPU_SCRIPTS, is_gpu=False)
+    run_jobs(GPU_SCRIPTS, is_gpu=True)

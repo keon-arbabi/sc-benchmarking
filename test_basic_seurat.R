@@ -94,12 +94,6 @@ timers$with_timer("Embedding", {
   data <- RunUMAP(data, dims = 1:50)
 })
 
-timers$with_timer("Plot embedding", {
-  p <- DimPlot(data, reduction = "umap", group.by = "cell_type")
-  ggsave(paste0("sc-benchmarking/figures/seurat_embedding_", DATA_NAME, ".png"),
-    plot = p, dpi = 300, units = "in", width = 10, height = 10)
-})
-
 timers$with_timer("Find markers", {
   markers <- FindAllMarkers(data, group.by = "cell_type", only.pos = TRUE)
 })

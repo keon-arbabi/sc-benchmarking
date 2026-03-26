@@ -2,6 +2,7 @@ import os
 import gc
 import sys
 import h5py
+import logging
 import numpy as np
 import polars as pl
 import scanpy as sc
@@ -10,25 +11,30 @@ import matplotlib.pyplot as plt
 sys.path.append('sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
-import warnings
-warnings.filterwarnings('ignore', message='DataFrame is highly fragmented')
-
+os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')
 os.environ.setdefault('CUDA_PATH', os.path.join(
     os.path.dirname(os.__file__), 'site-packages', 'nvidia', 'cuda_runtime'))
 
 import rapids_singlecell as rsc
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
-from packaging.version import parse as parse_version
 
-DATA_NAME = sys.argv[1]
-DATA_PATH = sys.argv[2]
-OUTPUT_PATH_TIME = sys.argv[3]
-OUTPUT_PATH_EMBEDDING = sys.argv[4]
-OUTPUT_PATH_PCS = sys.argv[5]
-OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+# DATA_NAME = sys.argv[1]
+# DATA_PATH = sys.argv[2]
+# OUTPUT_PATH_TIME = sys.argv[3]
+# OUTPUT_PATH_EMBEDDING = sys.argv[4]
+# OUTPUT_PATH_PCS = sys.argv[5]
+# OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
-CHUNK_SIZE = 50_000
+# rapids
+DATA_NAME = 'PANSCI'
+DATA_PATH = 'single-cell/PanSci/PanSci_raw.h5ad'
+OUTPUT_PATH_TIME = 'sc-benchmarking/output/basic_rapids_PANSCI_timer.csv'
+OUTPUT_PATH_EMBEDDING = 'sc-benchmarking/output/basic_rapids_PANSCI_embedding.csv'
+OUTPUT_PATH_PCS = 'sc-benchmarking/output/basic_rapids_PANSCI_pcs.csv'
+OUTPUT_PATH_NEIGHBORS = 'sc-benchmarking/output/basic_rapids_PANSCI_neighbors.csv'
+
+CHUNK_SIZE = 20_000
 
 if __name__ == '__main__':
 
@@ -43,14 +49,15 @@ if __name__ == '__main__':
         rmm_pool_size='10GB',
         rmm_maximum_pool_size='110GB',
         rmm_allocator_external_lib_list='cupy',
+        silence_logs=logging.ERROR,
     )
     client = Client(cluster)
     print(client)
 
-    if parse_version(ad.__version__) < parse_version('0.12.0rc1'):
-        from anndata.experimental import read_elem_as_dask as read_dask
-    else:
+    try:
         from anndata.experimental import read_elem_lazy as read_dask
+    except ImportError:
+        from anndata.experimental import read_elem_as_dask as read_dask
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
@@ -90,7 +97,7 @@ if __name__ == '__main__':
 
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
-            data, n_top_genes=2000, batch_key='donor')
+            data, n_top_genes=2000, flavor='cell_ranger')
         data = data[:, data.var.highly_variable].copy()
 
     with timers('PCA'):
@@ -118,15 +125,9 @@ if __name__ == '__main__':
                 resolution=res,
                 key_added=f'leiden_res_{res:4.2f}')
 
-    with timers('Plot embedding'):
-        rsc.get.anndata_to_CPU(data)
-        sc.pl.umap(data, color='cell_type')
-        plt.savefig(
-            f'sc-benchmarking/figures/rapids_embedding_{DATA_NAME}.png',
-            bbox_inches='tight', dpi=300)
-
     with timers('Find markers'):
-        sc.tl.rank_genes_groups(data, groupby='cell_type')
+        rsc.tl.rank_genes_groups(
+            data, groupby='cell_type', method='logreg', use_raw=False)
 
     # Save PCs
     pcs = data.obsm['X_pca']
@@ -166,9 +167,6 @@ if __name__ == '__main__':
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 
     timers.shutdown()
-    client.close()
-    cluster.close()
     print('--- Completed successfully ---')
-
-    print('\n--- Session Info ---')
-    sc.logging.print_header()
+    sys.stdout.flush()
+    os._exit(0)
