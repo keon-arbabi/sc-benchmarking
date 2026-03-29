@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     cluster = LocalCUDACluster(
         CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7',
-        threads_per_worker=1,
+        threads_per_worker=10,
         protocol='ucx',
         rmm_pool_size='10GB',
         rmm_managed_memory=False,
