@@ -15,6 +15,8 @@ os.environ.setdefault('CUDA_PATH', os.path.join(
     os.path.dirname(os.__file__), 'site-packages',
     'nvidia', 'cuda_runtime'))
 
+import rapids_singlecell as rsc
+from anndata.experimental import read_elem_lazy as read_dask
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
 
@@ -44,19 +46,6 @@ if __name__ == '__main__':
     )
     client = Client(cluster)
     print(client)
-
-    import rmm
-    import cupy as cp
-    from rmm.allocators.cupy import rmm_cupy_allocator
-    import rapids_singlecell as rsc
-
-    rmm.reinitialize(managed_memory=True, pool_allocator=False)
-    cp.cuda.set_allocator(rmm_cupy_allocator)
-
-    try:
-        from anndata.experimental import read_elem_lazy as read_dask
-    except ImportError:
-        from anndata.experimental import read_elem_as_dask as read_dask
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,

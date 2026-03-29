@@ -15,6 +15,8 @@ os.environ.setdefault('CUDA_PATH', os.path.join(
     os.path.dirname(os.__file__), 'site-packages',
     'nvidia', 'cuda_runtime'))
 
+import rapids_singlecell as rsc
+from anndata.experimental import read_elem_lazy as read_dask
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
 
@@ -45,19 +47,6 @@ if __name__ == '__main__':
     )
     client = Client(cluster)
     print(client)
-
-    import rmm
-    import cupy as cp
-    from rmm.allocators.cupy import rmm_cupy_allocator
-    import rapids_singlecell as rsc
-
-    rmm.reinitialize(managed_memory=False, pool_allocator=True)
-    cp.cuda.set_allocator(rmm_cupy_allocator)
-
-    try:
-        from anndata.experimental import read_elem_lazy as read_dask
-    except ImportError:
-        from anndata.experimental import read_elem_as_dask as read_dask
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
@@ -104,9 +93,9 @@ if __name__ == '__main__':
         n_rows = data.shape[0]
         n_cols = data.shape[1]
         n_workers = len(client.scheduler_info()['workers'])
-        n_chunks = n_workers - 1
-        rows_per_worker = (n_rows + n_chunks - 1) // n_chunks
-        data.X = data.X.rechunk((rows_per_worker, n_cols)).persist()
+        rows_per_worker = (n_rows + n_workers - 2) // (n_workers - 1)
+        data.X = data.X.rechunk(
+            (rows_per_worker, n_cols)).persist()
         data.X.compute_chunk_sizes()
 
         rsc.pp.scale(data, zero_center=False)
@@ -134,7 +123,9 @@ if __name__ == '__main__':
         rsc.tl.rank_genes_groups(
             data, groupby='cell_type', method='logreg', use_raw=False)
 
-    pcs = data.obsm['X_pca'].get()
+    pcs = data.obsm['X_pca']
+    if hasattr(pcs, 'get'):
+        pcs = pcs.get()
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
@@ -151,6 +142,8 @@ if __name__ == '__main__':
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
     umap_coords = data.obsm['X_umap']
+    if hasattr(umap_coords, 'get'):
+        umap_coords = umap_coords.get()
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': umap_coords[:, 0],
