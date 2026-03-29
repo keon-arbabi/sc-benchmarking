@@ -59,9 +59,11 @@ class MemoryTimer:
 
         def _sigterm_handler(signum, frame):
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            signal.signal(signal.SIGABRT, signal.SIG_IGN)
             raise SystemExit(1)
 
         signal.signal(signal.SIGTERM, _sigterm_handler)
+        signal.signal(signal.SIGABRT, _sigterm_handler)
         atexit.register(self.shutdown)
 
     def __call__(self, message: str) -> ContextManager[None]:
