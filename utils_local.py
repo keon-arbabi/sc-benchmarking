@@ -363,6 +363,7 @@ def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
                 f'#SBATCH --signal=B:TERM@30\n'
                 f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'export PYTHONUNBUFFERED=1\n'
+                f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'set -m\n'
                 f'{cmd} &\n'
                 f'CHILD=$!\n'

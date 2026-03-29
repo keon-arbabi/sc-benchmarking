@@ -3,10 +3,8 @@ import sys
 from pathlib import Path
 import polars as pl
 import polars.selectors as cs
-
-_PROJECT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_PROJECT_DIR))
-sys.path.insert(0, str(_PROJECT_DIR.parent))
+sys.path.append(f'{Path.home()}')
+sys.path.append(f'{Path.home()}/sc-benchmarking')
 from single_cell import SingleCell
 from utils_local import MemoryTimer, system_info
 

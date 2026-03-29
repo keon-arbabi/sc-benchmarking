@@ -4,7 +4,7 @@ import pandas as pd
 import scanpy as sc
 import anndata as ad
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(f'{Path.home()}/sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
 DATA_NAME = sys.argv[1]

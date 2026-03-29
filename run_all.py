@@ -1,14 +1,12 @@
 import os
 import sys
 from pathlib import Path
-
-_PROJECT_DIR = Path(__file__).resolve().parent
-_HOME_DIR = _PROJECT_DIR.parent
-sys.path.insert(0, str(_PROJECT_DIR))
+_HOME_DIR = Path.home()
+sys.path.append(f'{_HOME_DIR}/sc-benchmarking')
 from utils_local import run_slurm
 
-DATA_DIR = str(_HOME_DIR / 'single-cell')
-WORK_DIR = str(_PROJECT_DIR)
+DATA_DIR = f'{_HOME_DIR}/single-cell'
+WORK_DIR = f'{_HOME_DIR}/sc-benchmarking'
 
 OUTPUT_DIR = os.path.join(WORK_DIR, 'output')
 LOG_DIR = os.path.join(WORK_DIR, 'logs')
@@ -30,37 +28,26 @@ DATASETS = {
 # (file, tool, task, thread_params)
 CPU_SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
-    ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    ('test_basic_seurat.R', 'seurat', 'basic', None),
-    ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
-    ('test_de_scanpy.py', 'scanpy', 'de', None),
-    ('test_de_seurat.R', 'seurat', 'de', None),
-    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
-    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    ('test_transfer_seurat.R', 'seurat', 'transfer', None),
-    ('test_commands_brisc.py', 'brisc', 'commands', [-1, 1]),
-    ('test_commands_scanpy.py', 'scanpy', 'commands', None),
-    ('test_commands_seurat.R', 'seurat', 'commands', None),
+    # ('test_basic_scanpy.py', 'scanpy', 'basic', None),
+    # ('test_basic_seurat.R', 'seurat', 'basic', None),
+    # ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
+    # ('test_de_scanpy.py', 'scanpy', 'de', None),
+    # ('test_de_seurat.R', 'seurat', 'de', None),
+    # ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
+    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
+    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
+    # ('test_commands_brisc.py', 'brisc', 'commands', [-1, 1]),
+    # ('test_commands_scanpy.py', 'scanpy', 'commands', None),
+    # ('test_commands_seurat.R', 'seurat', 'commands', None),
 ]
 
-CLUSTER = os.environ.get('CLUSTER', '')
-
-if CLUSTER == 'trillium-gpu':
-    GPU_SCRIPTS = [
-        ('test_basic_rapids_robustness.py', 'rapids', 'basic', None),
-        ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
-    ]
-    GPU_CPUS = 96
-    GPU_COUNT = 4
-    GPU_MEM = '0'
-else:
-    GPU_SCRIPTS = [
-        ('test_basic_rapids_performance.py', 'rapids', 'basic', None),
-        ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
-    ]
-    GPU_CPUS = 112
-    GPU_COUNT = 8
-    GPU_MEM = '2000G'
+GPU_SCRIPTS = [
+    ('test_basic_rapids.py', 'rapids', 'basic', None),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
+]
+GPU_CPUS = 96
+GPU_COUNT = 4
+GPU_MEM = '0'
 
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
@@ -106,12 +93,16 @@ def run_jobs(scripts, is_gpu=False):
 
                 run_slurm(
                     ' '.join(cmd),
+                    account='def-shreejoy' if is_gpu else 'def-wainberg',
                     job_name=job_name, log_file=log,
                     CPUs=GPU_CPUS if is_gpu else 192,
                     GPUs=GPU_COUNT if is_gpu else 0,
                     memory=GPU_MEM if is_gpu else '0',
-                    hours=4)
+                    hours=24)
 
 if __name__ == '__main__':
-    # run_jobs(CPU_SCRIPTS, is_gpu=False)
-    run_jobs(GPU_SCRIPTS, is_gpu=True)
+    cluster = os.environ.get('CLUSTER', '')
+    if cluster == 'trillium-gpu':
+        run_jobs(GPU_SCRIPTS, is_gpu=True)
+    else:
+        run_jobs(CPU_SCRIPTS, is_gpu=False)

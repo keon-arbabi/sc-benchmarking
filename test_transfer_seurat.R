@@ -4,9 +4,7 @@ suppressPackageStartupMessages({
 })
 
 options(future.globals.maxSize = Inf)
-.script_dir <- dirname(normalizePath(sub("^--file=", "",
-  grep("^--file=", commandArgs(FALSE), value = TRUE)[1])))
-source(file.path(.script_dir, "utils_local.R"))
+source(file.path(path.expand("~"), "sc-benchmarking", "utils_local.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 DATA_NAME <- args[1]
@@ -45,9 +43,14 @@ timers$with_timer("Load data", {
 rm(mat_disk, mat, obs_metadata); gc()
 
 timers$with_timer("Quality control", {
-  data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+  data[["percent.mt"]] <- PercentageFeatureSet(
+    data, features = grep("^mt-", rownames(data),
+    ignore.case = TRUE, value = TRUE))
+  data[["malat1"]] <- FetchData(
+    data, vars = grep("^malat1$", rownames(data),
+    ignore.case = TRUE, value = TRUE))[, 1]
   data <- subset(
-    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & MALAT1 > 0,
+    data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & malat1 > 0,
     slot = "counts")
 })
 

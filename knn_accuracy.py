@@ -5,7 +5,7 @@ import faiss
 import numpy as np
 import polars as pl
 
-OUTPUT_DIR = str(Path(__file__).resolve().parent / 'output')
+OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
 DATASETS = ['SEAAD', 'PBMC']
 LIBRARIES = {
     'brisc': {
@@ -21,6 +21,7 @@ LIBRARIES = {
         'neighbors': 'basic_seurat_{dataset}_neighbors.csv',
     },
 }
+
 K = 20
 BATCH_SIZE = 100_000
 MAX_QUERIES = 300_000
@@ -87,12 +88,10 @@ for dataset_name in DATASETS:
             log(f'[{dataset_name}/{lib_name}] Neighbors not found: {nn_path}')
             continue
 
-        # Load approximate neighbors
         log(f'[{dataset_name}/{lib_name}] Loading approximate neighbors...')
         approx_neighbors = pl.read_csv(nn_path).to_numpy().astype(np.uint32)
         k_lib = approx_neighbors.shape[1]
 
-        # Compute or load exact KNN
         gt_cache = os.path.join(
             OUTPUT_DIR, f'knn_exact_{lib_name}_{dataset_name}.npz')
         if os.path.exists(gt_cache):
@@ -119,14 +118,10 @@ for dataset_name in DATASETS:
                 query_idx=query_idx if query_idx is not None
                 else np.array(None))
 
-        # Truncate exact KNN to match library's K if needed
         gt_k = gt_neighbors[:, :k_lib]
-
-        # Subsample to query cells if needed
         if query_idx is not None:
             approx_neighbors = approx_neighbors[query_idx]
 
-        # Compute recall
         log(f'[{dataset_name}/{lib_name}] Computing recall@{k_lib}...')
         rc = recall_at_k(gt_k, approx_neighbors)
 

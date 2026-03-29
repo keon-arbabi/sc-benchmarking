@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 import anndata as ad
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(f'{Path.home()}/sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
 os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')

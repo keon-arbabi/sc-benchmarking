@@ -2,10 +2,8 @@ import gc
 import sys
 from pathlib import Path
 import polars as pl
-
-_PROJECT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_PROJECT_DIR))
-sys.path.insert(0, str(_PROJECT_DIR.parent))
+sys.path.append(f'{Path.home()}')
+sys.path.append(f'{Path.home()}/sc-benchmarking')
 from single_cell import SingleCell
 from utils_local import MemoryTimer, system_info
 
@@ -80,7 +78,7 @@ if __name__ == '__main__':
                     contrasts=contrasts,
                     group='cond',
                     categorical_columns=['cond', 'sex'],
-                    verbose=True)
+                    verbose=False)
 
     de_df = de.table\
         .select('cell_type', 'gene', 'logFC', 'p', 'FDR')\
