@@ -43,10 +43,24 @@ CPU_SCRIPTS = [
     ('test_commands_seurat.R', 'seurat', 'commands', None),
 ]
 
-GPU_SCRIPTS = [
-    ('test_basic_rapids.py', 'rapids', 'basic', None),
-    ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
-]
+CLUSTER = os.environ.get('CLUSTER', '')
+
+if CLUSTER == 'trillium-gpu':
+    GPU_SCRIPTS = [
+        ('test_basic_rapids_robustness.py', 'rapids', 'basic', None),
+        ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
+    ]
+    GPU_CPUS = 96
+    GPU_COUNT = 4
+    GPU_MEM = '0'
+else:
+    GPU_SCRIPTS = [
+        ('test_basic_rapids_performance.py', 'rapids', 'basic', None),
+        ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
+    ]
+    GPU_CPUS = 112
+    GPU_COUNT = 8
+    GPU_MEM = '2000G'
 
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
@@ -93,9 +107,10 @@ def run_jobs(scripts, is_gpu=False):
                 run_slurm(
                     ' '.join(cmd),
                     job_name=job_name, log_file=log,
-                    CPUs=112 if is_gpu else 192,
-                    GPUs=8 if is_gpu else 0,
-                    hours=24)
+                    CPUs=GPU_CPUS if is_gpu else 192,
+                    GPUs=GPU_COUNT if is_gpu else 0,
+                    memory=GPU_MEM if is_gpu else '0',
+                    hours=4)
 
 if __name__ == '__main__':
     # run_jobs(CPU_SCRIPTS, is_gpu=False)

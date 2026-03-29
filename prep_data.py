@@ -229,7 +229,8 @@ for organ in pansci_organs:
 cols = ['sample', 'donor', 'cell_type', 'cell_type_broad', 'is_ref', 'cond',
         'organ', 'sex', 'age_group']
 
-sc = SingleCell(f'{dir_data}/GSE247719_PanSci_{pansci_organs[0]}_adata.h5ad')\
+sc = SingleCell(
+        f'{dir_data}/GSE247719_PanSci_{pansci_organs[0]}_adata.h5ad')\
     .concat_obs([
         SingleCell(f'{dir_data}/GSE247719_PanSci_{organ}_adata.h5ad')
         for organ in pansci_organs[1:]], flexible=True)\

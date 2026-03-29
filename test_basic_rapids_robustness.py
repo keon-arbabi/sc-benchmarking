@@ -5,18 +5,16 @@ import h5py
 import logging
 import numpy as np
 import polars as pl
-import scanpy as sc
 import anndata as ad
-import matplotlib.pyplot as plt
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils_local import MemoryTimer, system_info
 
 os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')
 os.environ.setdefault('CUDA_PATH', os.path.join(
-    os.path.dirname(os.__file__), 'site-packages', 'nvidia', 'cuda_runtime'))
+    os.path.dirname(os.__file__), 'site-packages',
+    'nvidia', 'cuda_runtime'))
 
-import rapids_singlecell as rsc
 from dask_cuda import LocalCUDACluster
 from dask.distributed import Client
 
@@ -27,24 +25,33 @@ OUTPUT_PATH_EMBEDDING = sys.argv[4]
 OUTPUT_PATH_PCS = sys.argv[5]
 OUTPUT_PATH_NEIGHBORS = sys.argv[6]
 
-CHUNK_SIZE = 50_000
+CHUNK_SIZE = 20_000
 
 if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
-    print('rapids basic')
+    print('rapids basic (managed)')
     print(f'{DATA_PATH=}')
 
     cluster = LocalCUDACluster(
-        threads_per_worker=10,
-        protocol='ucx',
-        rmm_pool_size='10GB',
+        CUDA_VISIBLE_DEVICES='0,1,2,3',
+        threads_per_worker=1,
+        protocol='tcp',
+        rmm_managed_memory=True,
         rmm_allocator_external_lib_list='cupy',
         silence_logs=logging.ERROR,
     )
     client = Client(cluster)
     print(client)
+
+    import rmm
+    import cupy as cp
+    from rmm.allocators.cupy import rmm_cupy_allocator
+    import rapids_singlecell as rsc
+
+    rmm.reinitialize(managed_memory=True, pool_allocator=False)
+    cp.cuda.set_allocator(rmm_cupy_allocator)
 
     try:
         from anndata.experimental import read_elem_lazy as read_dask
@@ -82,23 +89,29 @@ if __name__ == '__main__':
     gc.collect()
 
     with timers('Normalization'):
-        rsc.pp.normalize_total(data)
+        rsc.pp.normalize_total(data, target_sum=1e4)
         rsc.pp.log1p(data)
         data.X = data.X.persist()
         data.X.compute_chunk_sizes()
 
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
-            data, n_top_genes=2000, flavor='cell_ranger')
+            data, n_top_genes=5000, flavor='cell_ranger')
         data = data[:, data.var.highly_variable].copy()
 
     with timers('PCA'):
+        n_rows = data.shape[0]
+        n_cols = data.shape[1]
         n_workers = len(client.scheduler_info()['workers'])
-        rows_per_worker = (data.shape[0] + n_workers - 1) // n_workers
-        data.X = data.X.rechunk((rows_per_worker, data.shape[1])).persist()
+        rows_per_worker = (n_rows + n_workers - 1) // n_workers
+        data.X = data.X.rechunk((rows_per_worker, n_cols)).persist()
         data.X.compute_chunk_sizes()
 
-        rsc.tl.pca(data, n_comps=50, mask_var=None)
+        rsc.pp.scale(data, zero_center=False)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+        rsc.pp.pca(data, n_comps=100, mask_var=None)
         data.obsm['X_pca'] = data.obsm['X_pca'].persist()
         data.obsm['X_pca'].compute_chunk_sizes()
         data.obsm['X_pca'] = data.obsm['X_pca'].compute()
@@ -119,33 +132,26 @@ if __name__ == '__main__':
 
     with timers('Find markers'):
         rsc.tl.rank_genes_groups(
-            data, groupby='cell_type', method='logreg', use_raw=False)
+            data, groupby='cell_type',
+            method='logreg', use_raw=False)
 
-    rsc.get.anndata_to_CPU(data)
-
-    # Save PCs
-    pcs = data.obsm['X_pca']
-    if hasattr(pcs, 'get'):
-        pcs = pcs.get()
+    pcs = data.obsm['X_pca'].get()
     pc_df = pl.DataFrame({
         f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
     })
     pc_df.write_csv(OUTPUT_PATH_PCS)
 
-    # Save neighbors
     dist = data.obsp['distances']
     n_neighbors = dist.indptr[1] - dist.indptr[0] - 1
-    neighbors = dist.indices.reshape(data.n_obs, -1)[:, 1:].astype(np.uint32)
+    neighbors = dist.indices.reshape(
+        data.n_obs, -1)[:, 1:].astype(np.uint32)
     neighbors_df = pl.DataFrame({
         f'neighbor_{i+1}': neighbors[:, i]
         for i in range(n_neighbors)
     })
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
-    # Save embeddings
     umap_coords = data.obsm['X_umap']
-    if hasattr(umap_coords, 'get'):
-        umap_coords = umap_coords.get()
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': umap_coords[:, 0],

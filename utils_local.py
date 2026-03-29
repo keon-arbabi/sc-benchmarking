@@ -335,8 +335,11 @@ def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
     job_name = job_name.replace(' ', '_')
     cluster = os.environ.get('CLUSTER')
     partition = ''
-    if cluster in ('trillium', 'niagara') and GPUs == 0:
+    if cluster in ('trillium', 'trillium-gpu', 'niagara') and GPUs == 0:
         partition = '#SBATCH -p compute\n'
+    mem_line = ''
+    if cluster not in ('trillium', 'trillium-gpu'):
+        mem_line = f'#SBATCH --mem={memory}\n'
     gpu_line = ''
     if GPUs > 0:
         gpu_line = f'#SBATCH --gpus-per-node={gpu_type}:{GPUs}\n'
@@ -350,7 +353,7 @@ def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
                 f'#SBATCH -A {account}\n'
                 f'#SBATCH -N 1\n'
                 f'#SBATCH -n {CPUs}\n'
-                f'#SBATCH --mem={memory}\n'
+                f'{mem_line}'
                 f'{gpu_line}'
                 f'#SBATCH -t {f"0:{minutes}:00" if minutes else f"{hours}:00:00"}\n'
                 f'#SBATCH -J {job_name}\n'
@@ -367,11 +370,14 @@ def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
                 f'exit $?\n',
                 file=temp_file)
 
-        sbatch = ('.sbatch' if cluster in ('trillium', 'niagara')
-                  else 'sbatch')
+        use_wrapper = cluster in ('trillium', 'trillium-gpu', 'niagara')
+        sbatch = '.sbatch' if use_wrapper else 'sbatch'
+        env = None
+        if cluster == 'trillium-gpu':
+            env = {**os.environ, 'CLUSTER': 'trillium'}
         result = subprocess.run(
             [sbatch, temp_file.name],
-            capture_output=True, text=True)
+            capture_output=True, text=True, env=env)
 
         if result.returncode != 0:
             print(f'Error submitting job {job_name}: {result.stderr}')

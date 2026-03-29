@@ -1,7 +1,6 @@
 import gc
 import sys
 from pathlib import Path
-
 _PROJECT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_PROJECT_DIR))
 sys.path.insert(0, str(_PROJECT_DIR.parent))

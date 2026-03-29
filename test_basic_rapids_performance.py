@@ -1,0 +1,171 @@
+import os
+import gc
+import sys
+import h5py
+import logging
+import numpy as np
+import polars as pl
+import anndata as ad
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils_local import MemoryTimer, system_info
+
+os.environ.setdefault('CUPY_CACHE_DIR', '/tmp/cupy_cache')
+os.environ.setdefault('CUDA_PATH', os.path.join(
+    os.path.dirname(os.__file__), 'site-packages',
+    'nvidia', 'cuda_runtime'))
+
+from dask_cuda import LocalCUDACluster
+from dask.distributed import Client
+
+DATA_NAME = sys.argv[1]
+DATA_PATH = sys.argv[2]
+OUTPUT_PATH_TIME = sys.argv[3]
+OUTPUT_PATH_EMBEDDING = sys.argv[4]
+OUTPUT_PATH_PCS = sys.argv[5]
+OUTPUT_PATH_NEIGHBORS = sys.argv[6]
+
+CHUNK_SIZE = 50_000
+
+if __name__ == '__main__':
+
+    system_info()
+    print('--- Params ---')
+    print('rapids basic')
+    print(f'{DATA_PATH=}')
+
+    cluster = LocalCUDACluster(
+        CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7',
+        threads_per_worker=1,
+        protocol='ucx',
+        rmm_pool_size='10GB',
+        rmm_managed_memory=False,
+        rmm_allocator_external_lib_list='cupy',
+        silence_logs=logging.ERROR,
+    )
+    client = Client(cluster)
+    print(client)
+
+    import rmm
+    import cupy as cp
+    from rmm.allocators.cupy import rmm_cupy_allocator
+    import rapids_singlecell as rsc
+
+    rmm.reinitialize(managed_memory=False, pool_allocator=True)
+    cp.cuda.set_allocator(rmm_cupy_allocator)
+
+    try:
+        from anndata.experimental import read_elem_lazy as read_dask
+    except ImportError:
+        from anndata.experimental import read_elem_as_dask as read_dask
+
+    timers = MemoryTimer(
+        silent=False, csv_path=OUTPUT_PATH_TIME,
+        csv_columns={'library': 'rapids', 'test': 'basic',
+                     'dataset': DATA_NAME})
+
+    with timers('Load data'):
+        f = h5py.File(DATA_PATH, 'r')
+        shape = tuple(f['X'].attrs['shape'])
+        data = ad.AnnData(
+            X=read_dask(f['X'], (CHUNK_SIZE, shape[1])),
+            obs=ad.io.read_elem(f['obs']),
+            var=ad.io.read_elem(f['var']),
+        )
+        rsc.get.anndata_to_GPU(data)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+    with timers('Quality control'):
+        data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
+        data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
+        rsc.pp.calculate_qc_metrics(data, qc_vars=['mt', 'malat1'])
+        keep = ((data.obs['n_genes_by_counts'].values >= 100) &
+                (data.obs['pct_counts_mt'].values <= 5) &
+                (data.obs['pct_counts_malat1'].values > 0))
+        data = data[keep].copy()
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+    gc.collect()
+
+    with timers('Normalization'):
+        rsc.pp.normalize_total(data, target_sum=1e4)
+        rsc.pp.log1p(data)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+    with timers('Feature selection'):
+        rsc.pp.highly_variable_genes(
+            data, n_top_genes=5000, flavor='cell_ranger')
+        data = data[:, data.var.highly_variable].copy()
+
+    with timers('PCA'):
+        n_rows = data.shape[0]
+        n_cols = data.shape[1]
+        n_workers = len(client.scheduler_info()['workers'])
+        n_chunks = n_workers - 1
+        rows_per_worker = (n_rows + n_chunks - 1) // n_chunks
+        data.X = data.X.rechunk((rows_per_worker, n_cols)).persist()
+        data.X.compute_chunk_sizes()
+
+        rsc.pp.scale(data, zero_center=False)
+        data.X = data.X.persist()
+        data.X.compute_chunk_sizes()
+
+        rsc.pp.pca(data, n_comps=100, mask_var=None)
+        data.obsm['X_pca'] = data.obsm['X_pca'].persist()
+        data.obsm['X_pca'].compute_chunk_sizes()
+        data.obsm['X_pca'] = data.obsm['X_pca'].compute()
+
+    with timers('Nearest neighbors'):
+        rsc.pp.neighbors(
+            data, n_neighbors=15, n_pcs=50, algorithm='mg_ivfflat')
+
+    with timers('Embedding'):
+        rsc.tl.umap(data)
+
+    with timers('Clustering'):
+        for res in [0.25, 0.5, 1.0, 1.5, 2.0]:
+            rsc.tl.leiden(
+                data, resolution=res, key_added=f'leiden_res_{res:4.2f}')
+
+    with timers('Find markers'):
+        rsc.tl.rank_genes_groups(
+            data, groupby='cell_type', method='logreg', use_raw=False)
+
+    pcs = data.obsm['X_pca'].get()
+    pc_df = pl.DataFrame({
+        f'PC_{i+1}': pcs[:, i] for i in range(pcs.shape[1])
+    })
+    pc_df.write_csv(OUTPUT_PATH_PCS)
+
+    dist = data.obsp['distances']
+    n_neighbors = dist.indptr[1] - dist.indptr[0] - 1
+    neighbors = dist.indices.reshape(
+        data.n_obs, -1)[:, 1:].astype(np.uint32)
+    neighbors_df = pl.DataFrame({
+        f'neighbor_{i+1}': neighbors[:, i]
+        for i in range(n_neighbors)
+    })
+    neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
+
+    umap_coords = data.obsm['X_umap']
+    embedding_df = pl.DataFrame({
+        'cell_id': data.obs_names.tolist(),
+        'embed_1': umap_coords[:, 0],
+        'embed_2': umap_coords[:, 1],
+        'cell_type': data.obs['cell_type'].tolist(),
+        'cell_type_broad': data.obs['cell_type_broad'].tolist(),
+        'cluster_res_0.25': data.obs['leiden_res_0.25'].tolist(),
+        'cluster_res_0.5': data.obs['leiden_res_0.50'].tolist(),
+        'cluster_res_1.0': data.obs['leiden_res_1.00'].tolist(),
+        'cluster_res_1.5': data.obs['leiden_res_1.50'].tolist(),
+        'cluster_res_2.0': data.obs['leiden_res_2.00'].tolist(),
+    })
+    embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
+
+    timers.shutdown()
+    print('--- Completed successfully ---')
+    sys.stdout.flush()
+    os._exit(0)

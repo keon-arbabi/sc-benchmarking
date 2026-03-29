@@ -2,7 +2,6 @@ suppressPackageStartupMessages({
   library(BPCells)
   library(Seurat)
   library(presto)
-  library(ggplot2)
 })
 
 options(future.globals.maxSize = Inf)

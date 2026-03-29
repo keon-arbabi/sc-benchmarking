@@ -2,7 +2,6 @@ import sys
 import numpy as np
 import polars as pl
 import scanpy as sc
-import matplotlib.pyplot as plt
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils_local import MemoryTimer, system_info
