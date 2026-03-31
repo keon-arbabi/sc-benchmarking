@@ -75,18 +75,20 @@ timers$with_timer("PCA", {
   data_ref <- RunPCA(data_ref)
 })
 
+cell_type_col <- if (DATA_NAME == "PANSCI") "cell_type_fine" else "cell_type"
+
 timers$with_timer("Transfer labels", {
     anchors <- FindTransferAnchors(
       reference = data_ref, query = data_query,
       reference.reduction = "pca")
     predictions <- TransferData(
-      anchorset = anchors, refdata = data_ref$cell_type)
+      anchorset = anchors, refdata = data_ref[[cell_type_col]])
     data_query <- AddMetaData(
       object = data_query, metadata = predictions)
 })
 
 accuracy_df <- transfer_accuracy(
-  data_query@meta.data, "cell_type", "predicted.id")
+  data_query@meta.data, cell_type_col, "predicted.id")
 write.csv(accuracy_df, OUTPUT_PATH_ACC, row.names = FALSE)
 
 timers$shutdown()
@@ -94,6 +96,3 @@ cat("--- Completed successfully ---\n")
 
 cat("\n--- Session Info ---\n")
 print(sessionInfo())
-
-unlink(bpcells_dir, recursive = TRUE)
-

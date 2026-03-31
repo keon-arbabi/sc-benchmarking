@@ -57,19 +57,20 @@ if __name__ == '__main__':
     with timers('PCA'):
         sc.pp.pca(data_ref)
 
-    data_query.obs['cell_type_orig'] = data_query.obs['cell_type']
+    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PANSCI' else 'cell_type'
+    data_query.obs['cell_type_orig'] = data_query.obs[cell_type_col]
 
     with timers('Transfer labels'):
         sc.pp.neighbors(data_ref)
         sc.tl.ingest(
             data_query,
             data_ref,
-            obs='cell_type',
+            obs=cell_type_col,
             embedding_method='pca')
 
     print('--- Transfer Accuracy ---')
     transfer_accuracy(
-        data_query.obs, 'cell_type_orig', 'cell_type')\
+        data_query.obs, 'cell_type_orig', cell_type_col)\
     .write_csv(OUTPUT_PATH_ACC)
 
     timers.shutdown()

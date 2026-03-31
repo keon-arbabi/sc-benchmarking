@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
-    with timers('Filter'):
+    with timers('Quality control'):
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
 
     with timers('Differential expression'):

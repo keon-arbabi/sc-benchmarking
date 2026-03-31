@@ -115,5 +115,3 @@ cat("--- Completed successfully ---\n")
 
 cat("\n--- Session Info ---\n")
 print(sessionInfo())
-
-unlink(bpcells_dir, recursive = TRUE)

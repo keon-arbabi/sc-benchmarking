@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     data_pb = data_pb.filter_obs(pl.col('cond').is_not_null())
 
-    with timers('Filter'):
+    with timers('Quality control'):
         data_pb = data_pb.qc('cond', verbose=False)
 
     with timers('Differential expression'):

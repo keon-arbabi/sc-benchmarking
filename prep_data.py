@@ -224,8 +224,8 @@ for organ in pansci_organs:
         url = f'{geo_base}/{fname.replace("_", "%5F").replace(".", "%2E")}'
         run(f'wget {url} -O {fpath}')
 
-cols = ['sample', 'donor', 'cell_type', 'cell_type_broad', 'is_ref', 'cond',
-        'organ', 'sex', 'age_group']
+cols = ['sample', 'donor', 'cell_type', 'cell_type_broad', 'cell_type_fine',
+        'is_ref', 'cond', 'organ', 'sex', 'age_group']
 
 sc = SingleCell(
         f'{dir_data}/GSE247719_PanSci_{pansci_organs[0]}_adata.h5ad')\
@@ -236,12 +236,13 @@ sc = SingleCell(
     .make_var_names_unique(separator='~')\
     .cast_obs({'ID': pl.String})\
     .rename_obs({
-        'sample': 'cell_id', 'Main_cell_type': 'cell_type',
-        'Lineage': 'cell_type_broad', 'Organ_name': 'organ',
+        'sample': 'cell_id', 'Main_cell_type': 'cell_type_fine',
+        'Lineage': 'cell_type', 'Organ_name': 'organ',
         'Age_group': 'age_group', 'Sex': 'sex'})\
     .with_columns_obs(
         (pl.col('ID') + '_' + pl.col('organ')).alias('sample'),
         pl.col('ID').alias('donor'),
+        pl.col('cell_type').alias('cell_type_broad'),
         pl.col('Genotype').eq('WT').cast(pl.UInt8).alias('is_ref'),
         pl.when(pl.col('Genotype').eq('WT') &
                 pl.col('age_group').eq('06_months'))
@@ -276,8 +277,9 @@ column           value
  cell_id          20221205_EXP096_01_AACCGATTGC_…
  sample           11_Kidney
  donor            11
- cell_type        Proximal tubule cells
+ cell_type        Epithelial
  cell_type_broad  Epithelial
+ cell_type_fine   Proximal tubule cells
  is_ref           1
  cond             Young
  organ            Kidney

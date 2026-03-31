@@ -331,39 +331,55 @@ def system_info():
 
     print(flush=True)
 
-def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
-              memory='0', hours=24, minutes=None, account='def-shreejoy'):
-    from tempfile import NamedTemporaryFile
-    job_name = job_name.replace(' ', '_')
+def run_slurm(cmd, *, job_name='job', log_file=None,
+              CPUs=192 if os.environ.get('CLUSTER') == 'trillium' else
+                   96 if os.environ.get('CLUSTER') == 'trillium-gpu' else 1,
+              GPUs=4 if os.environ.get('CLUSTER') == 'trillium-gpu' else 0,
+              days=None, hours=None, memory=None,
+              partition='compute' if os.environ.get('CLUSTER') == 'trillium'
+                         else None,
+              account=None, verbose=False):
     cluster = os.environ.get('CLUSTER')
-    partition = ''
-    if cluster in ('trillium', 'trillium-gpu', 'niagara') and GPUs == 0:
-        partition = '#SBATCH -p compute\n'
-    mem_line = ''
-    if cluster not in ('trillium', 'trillium-gpu'):
-        mem_line = f'#SBATCH --mem={memory}\n'
-    gpu_line = ''
-    if GPUs > 0:
-        gpu_line = f'#SBATCH --gpus-per-node={gpu_type}:{GPUs}\n'
+    runtime = f'{days}-00:00:00' if days is not None else \
+        f'{hours}:00:00' if hours is not None else '1-00:00:00' \
+            if partition != 'debug' else '1:00:00'
+    if verbose:
+        memory_description = f' and {memory[:-1]} {memory[-1]}iB memory' \
+            if memory is not None else ''
+        partition_description = \
+            f' on the {partition} partition' if partition is not None else ''
+        print(f'Requesting {CPUs} CPUs, {GPUs} GPUs'
+              f'{memory_description} for {runtime}'
+              f'{partition_description}...')
+    job_name = job_name.replace(' ', '_')
+    from tempfile import NamedTemporaryFile
     try:
-        with NamedTemporaryFile(
-                'w', dir=os.environ.get('SCRATCH', '.'),
-                suffix='.sh', delete=False) as temp_file:
+        with NamedTemporaryFile('w', dir=os.environ.get('SCRATCH', '.'),
+                                suffix='.sh', delete=False) as temp_file:
+            partition_settings = f'#SBATCH -p {partition}\n' \
+                if partition is not None else ''
+            account_settings = f'#SBATCH --account={account}\n' \
+                if account is not None else ''
+            memory_settings = f'#SBATCH --mem {memory}\n' \
+                if memory is not None else ''
             print(
                 f'#!/bin/bash\n'
-                f'{partition}'
-                f'#SBATCH -A {account}\n'
+                f'{partition_settings}'
+                f'{account_settings}'
                 f'#SBATCH -N 1\n'
-                f'#SBATCH -n {CPUs}\n'
-                f'{mem_line}'
-                f'{gpu_line}'
-                f'#SBATCH -t {f"0:{minutes}:00" if minutes else f"{hours}:00:00"}\n'
+                f'{f"#SBATCH --gpus-per-node=h100:{GPUs}" + chr(10) if GPUs > 0 else ""}'
+                f'#SBATCH -c {CPUs}\n'
+                f'{memory_settings}'
+                f'#SBATCH -t {runtime}\n'
                 f'#SBATCH -J {job_name}\n'
-                f'#SBATCH -o {log_file}\n'
-                f'#SBATCH --signal=B:TERM@30\n'
-                f'export HDF5_USE_FILE_LOCKING=FALSE\n'
-                f'export PYTHONUNBUFFERED=1\n'
-                f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
+                f'{f"#SBATCH -o {log_file}" if log_file is not None else ""}\n'
+                f'#SBATCH --signal=B:TERM@30\n'  # flush CSV on timeout
+                f'export PYTHONUNBUFFERED=1\n'  # unbuffered logs
+                f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'  # R packages
+                f'export OMP_PLACES=cores\n'
+                f'export OMP_PROC_BIND=spread\n'
+                # forward TERM→SIGINT so MemoryTimer.shutdown() runs
+                # (replaces: set -euo pipefail; {cmd})
                 f'set -m\n'
                 f'{cmd} &\n'
                 f'CHILD=$!\n'
@@ -372,25 +388,19 @@ def run_slurm(cmd, *, job_name, log_file, CPUs=1, GPUs=0, gpu_type='h100',
                 f'wait $CHILD\n'
                 f'exit $?\n',
                 file=temp_file)
-
-        use_wrapper = cluster in ('trillium', 'trillium-gpu', 'niagara')
-        sbatch = '.sbatch' if use_wrapper else 'sbatch'
-        env = None
-        if cluster == 'trillium-gpu':
-            env = {**os.environ, 'CLUSTER': 'trillium'}
-        result = subprocess.run(
-            [sbatch, temp_file.name],
-            capture_output=True, text=True, env=env)
-
-        if result.returncode != 0:
-            print(f'Error submitting job {job_name}: {result.stderr}')
-            return None
-        print(f'Job submitted: {result.stdout.strip()}')
-        return result.stdout.strip().split()[-1]
+        # On Trillium, sbatch is a wrapper and .sbatch is the actual sbatch.
+        # On Trillium-GPU the same wrapper exists but needs CLUSTER=trillium.
+        sbatch = '.sbatch' if cluster.startswith('trillium') else 'sbatch'
+        env = {**os.environ, 'CLUSTER': 'trillium'} \
+            if cluster == 'trillium-gpu' else None
+        sbatch_message = run(f'{sbatch} {temp_file.name}',
+                             stdout=subprocess.PIPE, env=env)\
+            .stdout.decode().rstrip('\n')
+        print(f'{sbatch_message} ("{job_name}")')
     finally:
         try:
             os.unlink(temp_file.name)
-        except (NameError, FileNotFoundError):
+        except NameError:
             pass
 
 def transfer_accuracy(obs, orig_col, trans_col):

@@ -25,29 +25,23 @@ DATASETS = {
     'PANSCI': os.path.join(DATA_DIR, 'PanSci', 'PanSci_raw.h5ad'),
 }
 
-# (file, tool, task, thread_params)
-CPU_SCRIPTS = [
-    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1]),
-    # ('test_basic_scanpy.py', 'scanpy', 'basic', None),
-    # ('test_basic_seurat.R', 'seurat', 'basic', None),
-    # ('test_de_brisc.py', 'brisc', 'de', [-1, 1]),
-    # ('test_de_scanpy.py', 'scanpy', 'de', None),
-    # ('test_de_seurat.R', 'seurat', 'de', None),
-    # ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1]),
-    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None),
-    # ('test_transfer_seurat.R', 'seurat', 'transfer', None),
-    # ('test_commands_brisc.py', 'brisc', 'commands', [-1, 1]),
-    # ('test_commands_scanpy.py', 'scanpy', 'commands', None),
-    # ('test_commands_seurat.R', 'seurat', 'commands', None),
+# (file, tool, task, thread_params, gpu)
+SCRIPTS = [
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1], False),
+    ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
+    ('test_basic_seurat.R', 'seurat', 'basic', None, False),
+    ('test_de_brisc.py', 'brisc', 'de', [-1, 1], False),
+    ('test_de_scanpy.py', 'scanpy', 'de', None, False),
+    ('test_de_seurat.R', 'seurat', 'de', None, False),
+    ('test_transfer_brisc.py', 'brisc', 'transfer', [-1, 1], False),
+    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None, False),
+    ('test_transfer_seurat.R', 'seurat', 'transfer', None, False),
+    ('test_commands_brisc.py', 'brisc', 'commands', [-1, 1], False),
+    ('test_commands_scanpy.py', 'scanpy', 'commands', None, False),
+    ('test_commands_seurat.R', 'seurat', 'commands', None, False),
+    ('test_basic_rapids.py', 'rapids', 'basic', None, True),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1], True),
 ]
-
-GPU_SCRIPTS = [
-    ('test_basic_rapids.py', 'rapids', 'basic', None),
-    ('test_basic_brisc.py', 'brisc', 'basic', [-1]),
-]
-GPU_CPUS = 96
-GPU_COUNT = 4
-GPU_MEM = '0'
 
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
@@ -56,11 +50,17 @@ OUTPUTS = {
     'commands': [],
 }
 
+JOB_ABBREV = {
+    'basic': 'bas', 'transfer': 'tfr', 'commands': 'cmd',
+    'brisc': 'br', 'scanpy': 'sc', 'seurat': 'sr', 'rapids': 'rp',
+    'SEAAD': 'SA', 'PBMC': 'PB', 'PANSCI': 'PS',
+}
+
 def out(job_name, suffix):
     return os.path.join(OUTPUT_DIR, f'{job_name}_{suffix}.csv')
 
-def run_jobs(scripts, is_gpu=False):
-    for script_file, tool, task, thread_params in scripts:
+def run_jobs(scripts):
+    for script_file, tool, task, thread_params, gpu in scripts:
         if script_file.endswith('.R'):
             interpreter = RSCRIPT
         elif tool == 'rapids':
@@ -71,10 +71,11 @@ def run_jobs(scripts, is_gpu=False):
 
         for d_name, d_path in DATASETS.items():
             for threads in (thread_params or [None]):
-                parts = [f'{task}_{tool}', d_name]
+                a = JOB_ABBREV.get
+                parts = [a(task, task), a(tool, tool), a(d_name, d_name)]
                 if threads is not None:
                     parts.append(str(threads))
-                if is_gpu:
+                if gpu:
                     parts.append('gpu')
                 job_name = '_'.join(parts)
 
@@ -91,18 +92,11 @@ def run_jobs(scripts, is_gpu=False):
                 cmd.append(out(job_name, 'timer'))
                 cmd.extend(out(job_name, s) for s in OUTPUTS[task])
 
-                run_slurm(
-                    ' '.join(cmd),
-                    account='def-shreejoy' if is_gpu else 'def-wainberg',
-                    job_name=job_name, log_file=log,
-                    CPUs=GPU_CPUS if is_gpu else 192,
-                    GPUs=GPU_COUNT if is_gpu else 0,
-                    memory=GPU_MEM if is_gpu else '0',
-                    hours=24)
+                account = 'def-wainberg' if gpu else 'rrg-shreejoy'
+                run_slurm(' '.join(cmd),
+                          job_name=job_name, log_file=log, hours=24,
+                          account=account)
 
 if __name__ == '__main__':
-    cluster = os.environ.get('CLUSTER', '')
-    if cluster == 'trillium-gpu':
-        run_jobs(GPU_SCRIPTS, is_gpu=True)
-    else:
-        run_jobs(CPU_SCRIPTS, is_gpu=False)
+    is_gpu = os.environ.get('CLUSTER') == 'trillium-gpu'
+    run_jobs([s for s in SCRIPTS if s[4] == is_gpu])

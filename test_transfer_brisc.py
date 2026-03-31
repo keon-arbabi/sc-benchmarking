@@ -46,15 +46,17 @@ if __name__ == '__main__':
     with timers('PCA'):
         data_ref, data_query = data_ref.pca(data_query)
 
+    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PANSCI' else 'cell_type'
+
     with timers('Transfer labels'):
         data_ref, data_query = data_ref.harmonize(data_query)
         data_query = data_query.label_transfer_from(
-            data_ref, 'cell_type',
+            data_ref, cell_type_col,
             cell_type_column='cell_type_transferred')
 
     print('--- Transfer Accuracy ---')
     transfer_accuracy(
-        data_query.obs, 'cell_type', 'cell_type_transferred')\
+        data_query.obs, cell_type_col, 'cell_type_transferred')\
     .write_csv(OUTPUT_PATH_ACC)
 
     timers.shutdown()
