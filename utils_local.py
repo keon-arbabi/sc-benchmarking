@@ -360,26 +360,32 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 if partition is not None else ''
             account_settings = f'#SBATCH --account={account}\n' \
                 if account is not None else ''
+            cpu_settings = '' if cluster == 'trillium-gpu' else \
+                f'#SBATCH -c {CPUs}\n'
+            gpu_settings = f'#SBATCH --gpus-per-node=h100:{GPUs}\n' \
+                if GPUs > 0 else ''
             memory_settings = f'#SBATCH --mem {memory}\n' \
                 if memory is not None else ''
+            exclude_settings = '#SBATCH --exclude=trig0044\n' \
+                if cluster == 'trillium-gpu' else ''
             print(
                 f'#!/bin/bash\n'
                 f'{partition_settings}'
                 f'{account_settings}'
                 f'#SBATCH -N 1\n'
-                f'{f"#SBATCH --gpus-per-node=h100:{GPUs}" + chr(10) if GPUs > 0 else ""}'
-                f'#SBATCH -c {CPUs}\n'
+                f'{gpu_settings}'
+                f'{cpu_settings}'
                 f'{memory_settings}'
+                f'{exclude_settings}'
                 f'#SBATCH -t {runtime}\n'
                 f'#SBATCH -J {job_name}\n'
                 f'{f"#SBATCH -o {log_file}" if log_file is not None else ""}\n'
-                f'#SBATCH --signal=B:TERM@30\n'  # flush CSV on timeout
-                f'export PYTHONUNBUFFERED=1\n'  # unbuffered logs
-                f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'  # R packages
+                f'#SBATCH --signal=B:TERM@30\n'
+                f'export HDF5_USE_FILE_LOCKING=FALSE\n'
+                f'export PYTHONUNBUFFERED=1\n'
+                f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'export OMP_PLACES=cores\n'
                 f'export OMP_PROC_BIND=spread\n'
-                # forward TERM→SIGINT so MemoryTimer.shutdown() runs
-                # (replaces: set -euo pipefail; {cmd})
                 f'set -m\n'
                 f'{cmd} &\n'
                 f'CHILD=$!\n'

@@ -55,9 +55,6 @@ if __name__ == '__main__':
     with timers('Nearest neighbors'):
         sc.pp.neighbors(data)
 
-    with timers('Embedding'):
-        sc.tl.umap(data)
-
     with timers('Clustering'):
         for res in [0.25, 0.5, 1.0, 1.5, 2.0]:
             sc.tl.leiden(
@@ -66,6 +63,9 @@ if __name__ == '__main__':
                 flavor='igraph', # Future default
                 n_iterations=2, # Future default
                 key_added=f'leiden_res_{res:4.2f}')
+
+    with timers('Embedding'):
+        sc.tl.umap(data)
 
     # Default method='t-test'
     # Wilcoxon requires O(n log n) ranking per gene, infeasible at scale

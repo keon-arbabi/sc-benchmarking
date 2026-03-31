@@ -110,15 +110,15 @@ if __name__ == '__main__':
         rsc.pp.neighbors(
             data, n_neighbors=15, n_pcs=50, algorithm='mg_ivfflat')
 
-    with timers('Embedding'):
-        rsc.tl.umap(data)
-
     with timers('Clustering'):
         for res in [0.25, 0.5, 1.0, 1.5, 2.0]:
             rsc.tl.leiden(
                 data,
                 resolution=res,
                 key_added=f'leiden_res_{res:4.2f}')
+
+    with timers('Embedding'):
+        rsc.tl.umap(data)
 
     with timers('Find markers'):
         rsc.tl.rank_genes_groups(

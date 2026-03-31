@@ -61,6 +61,10 @@ if (DATA_NAME == "SEAAD") {
   data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
   group_cols <- c("cytokine", "sample", "cell_type")
   ident_pairs <- list(test = "IFN-gamma", ref = "PBS")
+} else if (DATA_NAME == "PANSCI") {
+  data <- subset(data, subset = !is.na(cond))
+  group_cols <- c("cond", "sample", "cell_type")
+  ident_pairs <- list(test = "Aged", ref = "Young")
 }
 
 # Seurat lacks pseudobulk-level filtering
@@ -77,7 +81,8 @@ timers$with_timer("Pseudobulk", {
   pb_meta <- data@meta.data[!duplicated(cell_groups), ]
   rownames(pb_meta) <- cell_groups[!duplicated(cell_groups)]
   pb_meta <- pb_meta[colnames(pb_mat), ]
-  data <- CreateSeuratObject(counts = pb_mat, meta.data = pb_meta)
+  data <- CreateSeuratObject(
+    counts = as(pb_mat, "dgCMatrix"), meta.data = pb_meta)
   # Required for Seurat::FindMarkers internal filtering
   data <- NormalizeData(data, verbose = FALSE)
 })

@@ -82,7 +82,7 @@ timers$with_timer("Transfer labels", {
       reference = data_ref, query = data_query,
       reference.reduction = "pca")
     predictions <- TransferData(
-      anchorset = anchors, refdata = data_ref[[cell_type_col]])
+      anchorset = anchors, refdata = data_ref@meta.data[[cell_type_col]])
     data_query <- AddMetaData(
       object = data_query, metadata = predictions)
 })

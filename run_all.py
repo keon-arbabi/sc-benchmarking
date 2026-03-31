@@ -25,11 +25,17 @@ DATASETS = {
     'PANSCI': os.path.join(DATA_DIR, 'PanSci', 'PanSci_raw.h5ad'),
 }
 
+SHORT = {
+    'basic': 'ba', 'de': 'de', 'transfer': 'tr', 'commands': 'cm',
+    'brisc': 'br', 'scanpy': 'sc', 'seurat': 'sr', 'rapids': 'rp',
+    'SEAAD': 'SE', 'PBMC': 'PB', 'PANSCI': 'PS',
+}
+
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', [-1], False),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
-    ('test_basic_seurat.R', 'seurat', 'basic', None, False),
+    # ('test_basic_seurat.R', 'seurat', 'basic', None, False),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1], False),
     ('test_de_scanpy.py', 'scanpy', 'de', None, False),
     ('test_de_seurat.R', 'seurat', 'de', None, False),
@@ -50,12 +56,6 @@ OUTPUTS = {
     'commands': [],
 }
 
-JOB_ABBREV = {
-    'basic': 'bas', 'transfer': 'tfr', 'commands': 'cmd',
-    'brisc': 'br', 'scanpy': 'sc', 'seurat': 'sr', 'rapids': 'rp',
-    'SEAAD': 'SA', 'PBMC': 'PB', 'PANSCI': 'PS',
-}
-
 def out(job_name, suffix):
     return os.path.join(OUTPUT_DIR, f'{job_name}_{suffix}.csv')
 
@@ -71,8 +71,7 @@ def run_jobs(scripts):
 
         for d_name, d_path in DATASETS.items():
             for threads in (thread_params or [None]):
-                a = JOB_ABBREV.get
-                parts = [a(task, task), a(tool, tool), a(d_name, d_name)]
+                parts = [f'{task}_{tool}', d_name]
                 if threads is not None:
                     parts.append(str(threads))
                 if gpu:
@@ -92,10 +91,15 @@ def run_jobs(scripts):
                 cmd.append(out(job_name, 'timer'))
                 cmd.extend(out(job_name, s) for s in OUTPUTS[task])
 
-                account = 'def-wainberg' if gpu else 'rrg-shreejoy'
+                short_parts = [SHORT[task] + SHORT[tool], SHORT[d_name]]
+                if threads is not None:
+                    short_parts.append(str(threads))
+                if gpu:
+                    short_parts.append('g')
+                slurm_name = '_'.join(short_parts)
+
                 run_slurm(' '.join(cmd),
-                          job_name=job_name, log_file=log, hours=24,
-                          account=account)
+                          job_name=slurm_name, log_file=log, hours=24)
 
 if __name__ == '__main__':
     is_gpu = os.environ.get('CLUSTER') == 'trillium-gpu'
