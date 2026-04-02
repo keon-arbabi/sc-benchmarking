@@ -39,12 +39,6 @@ counts <- GetAssayData(data, layer = "counts")
 cell_name <- colnames(data)[1]
 gene_name <- rownames(data)[1]
 cell_type_select <- as.character(data$cell_type[1])
-donors <- sort(unique(as.character(data$donor)))
-donor_df <- data.frame(
-  donor = donors,
-  donor_index = seq_along(donors) - 1L,
-  stringsAsFactors = FALSE
-)
 
 timers$with_timer("Get expression by cell", {
   as.matrix(counts[, cell_name])
@@ -54,58 +48,38 @@ timers$with_timer("Get expression by gene", {
   as.matrix(counts[gene_name, ])
 })
 
-timers$with_timer("Subset cells", {
-  cells_keep <- colnames(data)[data$cell_type == cell_type_select]
-  subset(data, cells = cells_keep)
+int_mask_obs <- which(data$cell_type == cell_type_select)
+int_mask_var <- which(rownames(data) %in% VariableFeatures(data))
+
+timers$with_timer("Subset to one cell type (bool)", {
+  data[, data$cell_type == cell_type_select]
 })
 
-timers$with_timer("Subset genes", {
-  subset(data, features = VariableFeatures(data))
+timers$with_timer("Subset to one cell type (int)", {
+  data[, int_mask_obs]
 })
 
-timers$with_timer("Subsample cells", {
+timers$with_timer("Subset to highly variable genes (bool)", {
+  data[rownames(data) %in% VariableFeatures(data), ]
+})
+
+timers$with_timer("Subset to highly variable genes (int)", {
+  data[int_mask_var, ]
+})
+
+timers$with_timer("Subsample to 10,000 cells", {
   subset(data, cells = sample(colnames(data), 10000))
 })
 
-timers$with_timer("Select obs columns", {
+timers$with_timer("Select categorical columns", {
   data@meta.data[, !sapply(data@meta.data, is.numeric), drop = FALSE]
 })
 
-timers$with_timer("Add metadata column", {
-  ones <- rep(1L, ncol(data))
-  ct_donor <- ave(ones, data$donor, data$cell_type, FUN = length)
-  donor_total <- ave(ones, data$donor, FUN = length)
-  ct_total <- ave(ones, data$cell_type, FUN = length)
-  data$cell_type_enrichment <- (ct_donor / donor_total) / (ct_total / ncol(data))
-})
-
-timers$with_timer("Cast obs column", {
-  data$cell_type <- as.character(data$cell_type)
-})
-
-timers$with_timer("Rename obs column", {
-  idx <- which(names(data@meta.data) == "cell_type_enrichment")
-  names(data@meta.data)[idx] <- "ct_enrichment"
-})
-
-timers$with_timer("Remove metadata column", {
-  data$ct_enrichment <- NULL
-})
-
-timers$with_timer("Join obs metadata", {
-  idx <- match(as.character(data$donor), donor_df$donor)
-  data$donor_index <- donor_df$donor_index[idx]
-})
-
-timers$with_timer("Rename cells", {
-  data <- RenameCells(data, add.cell.id = "prefix")
-})
-
-timers$with_timer("Split by obs column", {
+timers$with_timer("Split by cell type", {
   data_split <- SplitObject(data, split.by = "cell_type_broad")
 })
 
-timers$with_timer("Concatenate objects", {
+timers$with_timer("Concatenate cell types", {
   data <- merge(data_split[[1]], y = data_split[-1])
 })
 

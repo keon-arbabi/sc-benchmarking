@@ -33,9 +33,9 @@ SHORT = {
 
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
-    ('test_basic_brisc.py', 'brisc', 'basic', [-1], False),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1, 1], False),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
-    # ('test_basic_seurat.R', 'seurat', 'basic', None, False),
+    ('test_basic_seurat.R', 'seurat', 'basic', None, False),
     ('test_de_brisc.py', 'brisc', 'de', [-1, 1], False),
     ('test_de_scanpy.py', 'scanpy', 'de', None, False),
     ('test_de_seurat.R', 'seurat', 'de', None, False),
@@ -99,6 +99,7 @@ def run_jobs(scripts):
                 slurm_name = '_'.join(short_parts)
 
                 run_slurm(' '.join(cmd),
+                          account='def-wainberg' if gpu else 'def-wainberg',
                           job_name=slurm_name, log_file=log, hours=24)
 
 if __name__ == '__main__':

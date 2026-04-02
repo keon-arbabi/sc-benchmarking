@@ -11,13 +11,14 @@ results <- list.files(
   map(fread) %>% rbindlist(fill = TRUE) %>% as_tibble()
 
 grp <- list(
-  order = c("Seurat", "scanpy", "rapids", "brisc (ST)", "brisc (MT)"),
+  order = c("Seurat", "scanpy", "brisc (ST)", "brisc (MT)"),
   colors = c("brisc (MT)" = "#d62728", "brisc (ST)" = "#e8726a",
-             "rapids" = "#9467bd", "scanpy" = "#8fbc8f",
-             "Seurat" = "#a8c4dc"))
+             "scanpy" = "#8fbc8f", "Seurat" = "#a8c4dc"))
 
 datasets <- c("SEAAD", "PBMC", "PANSCI")
-ds_lab <- c(SEAAD = "1.2M cells (SEAAD)", PBMC = "9.7M cells (Parse PBMC)",
+ds_lab <- c(
+  SEAAD = "1.2M cells (SEAAD)",
+  PBMC = "9.7M cells (Parse PBMC)",
             PANSCI = "20.3M cells (PanSci)")
 ds_unit <- c(SEAAD = "s", PBMC = "h", PANSCI = "m")
 ds_div <- c(SEAAD = 1, PBMC = 3600, PANSCI = 60)
@@ -26,21 +27,23 @@ wf_lab <- c(basic = "Basic workflow", transfer = "Label transfer",
             de = "Differential expression")
 
 op_order <- list(
-  basic = c("Load data", "Quality control", "Normalization",
-            "Feature selection", "PCA", "Nearest neighbors",
-            "Clustering", "Embedding", "Find markers"),
+  basic = c(
+    "Load data", "Quality control", "Normalization",
+    "Feature selection", "PCA", "Nearest neighbors",
+    "Clustering", "Embedding", "Find markers"),
   transfer = c("Load data", "Quality control", "Split data",
                "Normalization", "Feature selection", "PCA",
                "Transfer labels"),
   de = c("Load data", "Quality control", "Pseudobulk",
          "Filter", "Differential expression"),
   commands = c("Get expression by cell", "Get expression by gene",
-               "Subset cells", "Subset genes", "Subsample cells",
-               "Select obs columns", "Add metadata column",
-               "Cast obs column", "Rename obs column",
-               "Remove metadata column", "Join obs metadata",
-               "Rename cells", "Split by obs column",
-               "Concatenate objects", "Copy object"))
+               "Subset to one cell type (bool)",
+               "Subset to one cell type (int)",
+               "Subset to highly variable genes (bool)",
+               "Subset to highly variable genes (int)",
+               "Subsample to 10,000 cells",
+               "Select categorical columns",
+               "Split by cell type", "Concatenate cell types"))
 
 fmt_time <- function(s) {
   case_when(s >= 3600 ~ paste0(round(s / 3600, 1), "h"),
@@ -72,10 +75,10 @@ prepared <- results %>%
     group = case_when(
       library == "brisc" & num_threads == -1 ~ "brisc (MT)",
       library == "brisc" ~ "brisc (ST)",
-      library == "rapids" ~ "rapids",
       library == "scanpy" ~ "scanpy",
       .default = "Seurat") %>%
-      factor(levels = grp$order))
+      factor(levels = grp$order)) %>%
+  filter(library != "rapids")
 
 # --- Total runtime figure ----------------------------------------------------
 
@@ -219,3 +222,93 @@ walk(c(names(wf_lab), "commands"), \(wf) {
          build_step_fig(wf),
          width = 13.5, height = max(3, n * 0.8))
 })
+
+# --- Embedding figures --------------------------------------------------------
+# Hue per broad cell type, lightness ramp per cluster within each type
+
+embed_files <- c(
+  scanpy = "basic_scanpy_%s_embedding.csv",
+  Seurat = "basic_seurat_%s_embedding.csv",
+  brisc  = "basic_brisc_%s_-1_embedding.csv",
+  rapids = "basic_rapids_%s_gpu_embedding.csv")
+
+embed_methods <- c(
+  scanpy = "UMAP", Seurat = "UMAP", brisc = "PaCMAP", rapids = "UMAP")
+
+for (ds in datasets) {
+  paths <- file.path(work_dir, "output", sprintf(embed_files, ds))
+  names(paths) <- names(embed_files)
+  paths <- paths[file.exists(paths)]
+  if (length(paths) == 0) next
+
+  embed_data <- imap(paths, \(path, lib) {
+    df <- fread(path) %>% as_tibble() %>%
+      slice_sample(n = min(nrow(.), 50000)) %>%
+      mutate(library = lib)
+    if (lib == "brisc") {
+      df %>% rename(embed_1 = pacmap_1, embed_2 = pacmap_2)
+    } else df
+  }) %>% bind_rows() %>%
+    select(embed_1, embed_2, cluster_res_1.0, cell_type_broad, library) %>%
+    mutate(cluster_id = paste0(library, "_", cluster_res_1.0))
+
+  # One hue per broad type
+  broad_types <- sort(unique(embed_data$cell_type_broad))
+  hues <- setNames(
+    head(seq(0, 360, length.out = length(broad_types) + 1), -1),
+    broad_types)
+
+  # Map each (library, cluster) to its dominant broad type,
+  # then shade light -> dark within each type
+  pal_df <- embed_data %>%
+    count(library, cluster_res_1.0, cell_type_broad, sort = TRUE) %>%
+    distinct(library, cluster_res_1.0, .keep_all = TRUE) %>%
+    arrange(as.numeric(cluster_res_1.0)) %>%
+    mutate(rank = row_number(), n_cl = n(),
+           .by = c(library, cell_type_broad)) %>%
+    mutate(color = hcl(
+      h = hues[cell_type_broad], c = 55,
+      l = 85 - (85 - 45) * (rank - 1) / pmax(n_cl - 1, 1)))
+
+  pal <- setNames(pal_df$color,
+    paste0(pal_df$library, "_", pal_df$cluster_res_1.0))
+
+  # Facet labels: library (method, time)
+  embed_times <- results %>%
+    filter(test == "basic", operation == "Embedding", dataset == ds) %>%
+    filter(library != "brisc" | num_threads == -1) %>%
+    transmute(lib = case_when(
+      library == "brisc" ~ "brisc", library == "rapids" ~ "rapids",
+      library == "scanpy" ~ "scanpy", .default = "Seurat"),
+      duration) %>% deframe()
+
+  lib_labels <- sapply(names(embed_files), \(lib) {
+    t <- embed_times[lib]
+    paste0(lib, " (", embed_methods[lib],
+           if (!is.na(t)) paste0(", ", fmt_time(t)), ")")
+  })
+  embed_data <- embed_data %>%
+    mutate(library = factor(lib_labels[library], lib_labels))
+  broad_pal <- setNames(
+    hcl(h = hues[broad_types], c = 55, l = 60), broad_types)
+
+  p <- ggplot(embed_data, aes(embed_1, embed_2)) +
+    geom_point(aes(color = cluster_id),
+               size = 0.75, stroke = 0, alpha = 1) +
+    scale_color_manual(values = pal, guide = "none") +
+    geom_point(aes(fill = cell_type_broad),
+               shape = 22, size = 0, stroke = 0) +
+    scale_fill_manual(values = broad_pal, name = NULL,
+      guide = guide_legend(override.aes = list(size = 4))) +
+    facet_wrap(~ library, nrow = 2, scales = "free") +
+    labs(title = ds_lab[ds], x = NULL, y = NULL) +
+    base_theme +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(),
+          strip.text = element_text(size = 11),
+          strip.background = element_rect(fill = "white"),
+          legend.position = "right")
+
+  ggsave(file.path(work_dir, "figures",
+                   paste0("fig_embeddings_", ds, ".png")),
+         p, width = 10, height = 10, dpi = 300)
+}

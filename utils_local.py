@@ -337,6 +337,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
               GPUs=4 if os.environ.get('CLUSTER') == 'trillium-gpu' else 0,
               days=None, hours=None, memory=None,
               partition='compute' if os.environ.get('CLUSTER') == 'trillium'
+                         else 'compute_full_node' if os.environ.get('CLUSTER') == 'trillium-gpu'
                          else None,
               account=None, verbose=False):
     cluster = os.environ.get('CLUSTER')
@@ -366,8 +367,6 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 if GPUs > 0 else ''
             memory_settings = f'#SBATCH --mem {memory}\n' \
                 if memory is not None else ''
-            exclude_settings = '#SBATCH --exclude=trig0044\n' \
-                if cluster == 'trillium-gpu' else ''
             print(
                 f'#!/bin/bash\n'
                 f'{partition_settings}'
@@ -376,7 +375,6 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'{gpu_settings}'
                 f'{cpu_settings}'
                 f'{memory_settings}'
-                f'{exclude_settings}'
                 f'#SBATCH -t {runtime}\n'
                 f'#SBATCH -J {job_name}\n'
                 f'{f"#SBATCH -o {log_file}" if log_file is not None else ""}\n'

@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
-            data, n_top_genes=5000, flavor='cell_ranger')
+            data, n_top_genes=5000, flavor="cell_ranger")
         data = data[:, data.var.highly_variable].copy()
 
     with timers('PCA'):
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         data.X = data.X.persist()
         data.X.compute_chunk_sizes()
 
-        rsc.pp.pca(data, n_comps=100, mask_var=None)
+        rsc.pp.pca(data, n_comps=50, mask_var=None)
         data.obsm['X_pca'] = data.obsm['X_pca'].persist()
         data.obsm['X_pca'].compute_chunk_sizes()
         data.obsm['X_pca'] = data.obsm['X_pca'].compute()

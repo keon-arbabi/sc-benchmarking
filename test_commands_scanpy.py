@@ -1,6 +1,5 @@
-import gc
 import sys
-import pandas as pd
+import numpy as np
 import scanpy as sc
 import anndata as ad
 from pathlib import Path
@@ -25,72 +24,53 @@ if __name__ == '__main__':
 
     # Setup
     data = sc.read_h5ad(DATA_PATH)
-    sc.pp.highly_variable_genes(
-        data, n_top_genes=2000, batch_key='donor', flavor='seurat_v3')
+    data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
+    data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
+    sc.pp.calculate_qc_metrics(
+        data, qc_vars=['mt', 'malat1'], inplace=True)
+    keep = ((data.obs['n_genes_by_counts'].values >= 100) &
+            (data.obs['pct_counts_mt'].values <= 5) &
+            (data.obs['pct_counts_malat1'].values > 0))
+    data = data[keep].copy()
+    sc.pp.highly_variable_genes(data, n_top_genes=2000, flavor='seurat_v3')
 
-    cell_name = data.obs_names[0]
-    gene_name = data.var_names[0]
+    cell_idx = 0
+    gene_idx = 0
     cell_type_select = data.obs['cell_type'].iloc[0]
-    donors = sorted(data.obs['donor'].unique())
-    donor_df = pd.DataFrame({
-        'donor': donors,
-        'donor_index': range(len(donors))
-    }).set_index('donor')
 
     with timers('Get expression by cell'):
-        data[cell_name, :].X.toarray().ravel()
+        data.X[cell_idx, :].toarray().ravel()
 
     with timers('Get expression by gene'):
-        data[:, gene_name].X.toarray().ravel()
+        data.X[:, gene_idx].toarray().ravel()
 
-    with timers('Subset cells'):
+    int_mask_obs = (data.obs['cell_type'] == cell_type_select).values.nonzero()[0]
+    int_mask_var = data.var['highly_variable'].values.nonzero()[0]
+
+    with timers('Subset to one cell type (bool)'):
         data[data.obs['cell_type'] == cell_type_select].copy()
 
-    with timers('Subset genes'):
+    with timers('Subset to one cell type (int)'):
+        data[int_mask_obs].copy()
+
+    with timers('Subset to highly variable genes (bool)'):
         data[:, data.var['highly_variable']].copy()
 
-    with timers('Subsample cells'):
+    with timers('Subset to highly variable genes (int)'):
+        data[:, int_mask_var].copy()
+
+    with timers('Subsample to 10,000 cells'):
         sc.pp.sample(data, n=10_000, copy=True)
 
-    with timers('Select obs columns'):
+    with timers('Select categorical columns'):
         data.obs.select_dtypes(exclude='number')
 
-    with timers('Add metadata column'):
-        data.obs['cell_type_enrichment'] = (
-            data.obs.groupby(['donor', 'cell_type'], observed=True)['donor']
-            .transform('size') /
-            data.obs.groupby('donor', observed=True)['donor']
-            .transform('size')) / (
-            data.obs.groupby('cell_type', observed=True)['donor']
-            .transform('size') / len(data))
-
-    with timers('Cast obs column'):
-        data.obs['cell_type'] = data.obs['cell_type'].astype(str)
-
-    with timers('Rename obs column'):
-        data.obs = data.obs.rename(
-            columns={'cell_type_enrichment': 'ct_enrichment'})
-
-    with timers('Remove metadata column'):
-        data.obs = data.obs.drop(columns=['ct_enrichment'])
-
-    with timers('Join obs metadata'):
-        data.obs = data.obs.join(donor_df, on='donor')
-
-    with timers('Rename cells'):
-        data.obs_names = 'prefix_' + data.obs_names
-
-    with timers('Split by obs column'):
+    with timers('Split by cell type'):
         data_split = [data[data.obs['cell_type_broad'] == ct].copy()
                       for ct in data.obs['cell_type_broad'].unique()]
 
-    with timers('Concatenate objects'):
+    with timers('Concatenate cell types'):
         data = ad.concat(data_split)
-
-    del data_split; gc.collect()
-
-    with timers('Copy object'):
-        data_copy = data.copy()
 
     timers.shutdown()
     print('--- Completed successfully ---')
