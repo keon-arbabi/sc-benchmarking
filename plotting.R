@@ -37,10 +37,8 @@ op_order <- list(
   de = c("Load data", "Quality control", "Pseudobulk",
          "Filter", "Differential expression"),
   commands = c("Get expression by cell", "Get expression by gene",
-               "Subset to one cell type (bool)",
-               "Subset to one cell type (int)",
-               "Subset to highly variable genes (bool)",
-               "Subset to highly variable genes (int)",
+               "Subset to one cell type",
+               "Subset to highly variable genes",
                "Subsample to 10,000 cells",
                "Select categorical columns",
                "Split by cell type", "Concatenate cell types"))

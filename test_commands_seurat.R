@@ -48,23 +48,12 @@ timers$with_timer("Get expression by gene", {
   as.matrix(counts[gene_name, ])
 })
 
-int_mask_obs <- which(data$cell_type == cell_type_select)
-int_mask_var <- which(rownames(data) %in% VariableFeatures(data))
-
-timers$with_timer("Subset to one cell type (bool)", {
+timers$with_timer("Subset to one cell type", {
   data[, data$cell_type == cell_type_select]
 })
 
-timers$with_timer("Subset to one cell type (int)", {
-  data[, int_mask_obs]
-})
-
-timers$with_timer("Subset to highly variable genes (bool)", {
-  data[rownames(data) %in% VariableFeatures(data), ]
-})
-
-timers$with_timer("Subset to highly variable genes (int)", {
-  data[int_mask_var, ]
+timers$with_timer("Subset to highly variable genes", {
+  subset(data, features = VariableFeatures(data))
 })
 
 timers$with_timer("Subsample to 10,000 cells", {

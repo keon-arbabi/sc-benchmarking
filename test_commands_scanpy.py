@@ -1,5 +1,4 @@
 import sys
-import numpy as np
 import scanpy as sc
 import anndata as ad
 from pathlib import Path
@@ -44,20 +43,11 @@ if __name__ == '__main__':
     with timers('Get expression by gene'):
         data.X[:, gene_idx].toarray().ravel()
 
-    int_mask_obs = (data.obs['cell_type'] == cell_type_select).values.nonzero()[0]
-    int_mask_var = data.var['highly_variable'].values.nonzero()[0]
-
-    with timers('Subset to one cell type (bool)'):
+    with timers('Subset to one cell type'):
         data[data.obs['cell_type'] == cell_type_select].copy()
 
-    with timers('Subset to one cell type (int)'):
-        data[int_mask_obs].copy()
-
-    with timers('Subset to highly variable genes (bool)'):
+    with timers('Subset to highly variable genes'):
         data[:, data.var['highly_variable']].copy()
-
-    with timers('Subset to highly variable genes (int)'):
-        data[:, int_mask_var].copy()
 
     with timers('Subsample to 10,000 cells'):
         sc.pp.sample(data, n=10_000, copy=True)

@@ -24,7 +24,7 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
   env$.unit = unit
   env$.summary_unit = if (!is.null(summary_unit)) summary_unit else unit
 
-  with_timer = function(message, expr) {
+  with_timer = function(message, expr, exclude = FALSE) {
     if (!silent) cat(paste0(message, '...\n'))
     result = NULL
     aborted = FALSE
@@ -104,7 +104,8 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
           duration = duration,
           max_mem = new_memory,
           mem_percent = new_percent,
-          aborted = aborted
+          aborted = aborted,
+          exclude = exclude
         )
       }
 
@@ -194,7 +195,8 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
       items = names(env$timings)
     }
 
-    total_time = sum(sapply(env$timings, function(x) x$duration))
+    total_time = sum(sapply(env$timings, function(x)
+      if (isTRUE(x$exclude)) 0 else x$duration))
 
     # Create table headers
     duration_header = if (!is.null(unit)) {
@@ -221,13 +223,14 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
       status = if (info$aborted) 'aborted' else 'completed'
       time_str = format_time(duration, unit)
 
+      excluded <- isTRUE(info$exclude)
       table_data[[i]] = c(
         msg,
         status,
         time_str,
-        sprintf('%.2f%%', percentage),
+        if (excluded) 'N/A' else sprintf('%.2f%%', percentage),
         sprintf('%.2f', max_mem),
-        sprintf('%.2f%%', mem_percent)
+        if (excluded) 'N/A' else sprintf('%.2f%%', mem_percent)
       )
     }
 
@@ -261,7 +264,8 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
       items = names(env$timings)
     }
 
-    total = sum(sapply(env$timings, function(x) x$duration))
+    total = sum(sapply(env$timings, function(x)
+      if (isTRUE(x$exclude)) 0 else x$duration))
 
     ops = items
     durs = sapply(items, function(msg) env$timings[[msg]]$duration)
@@ -277,16 +281,15 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
 
     aborts = sapply(items, function(msg) env$timings[[msg]]$aborted)
     pcts = sapply(items, function(msg) {
-      if (total > 0) {
-        (env$timings[[msg]]$duration / total) * 100
-      } else {
-        0
-      }
+      if (isTRUE(env$timings[[msg]]$exclude)) NA_real_
+      else if (total > 0) (env$timings[[msg]]$duration / total) * 100
+      else 0
     })
     memory = sapply(items, function(msg) env$timings[[msg]]$max_mem)
     memory_unit = rep("GiB", length(items))
     percent_mem = sapply(items, function(msg) {
-      env$timings[[msg]]$mem_percent
+      if (isTRUE(env$timings[[msg]]$exclude)) NA_real_
+      else env$timings[[msg]]$mem_percent
     })
 
     data.frame(

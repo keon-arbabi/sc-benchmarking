@@ -41,20 +41,11 @@ if __name__ == '__main__':
     with timers('Get expression by gene'):
         data.gene(gene_name)
 
-    int_mask_obs = data.obs['cell_type'].eq(cell_type_select).arg_true()
-    int_mask_var = data.var['highly_variable'].arg_true()
-
-    with timers('Subset to one cell type (bool)'):
+    with timers('Subset to one cell type'):
         data.filter_obs(cell_type=cell_type_select)
 
-    with timers('Subset to one cell type (int)'):
-        data[int_mask_obs]
-
-    with timers('Subset to highly variable genes (bool)'):
+    with timers('Subset to highly variable genes'):
         data.filter_var(pl.col('highly_variable'))
-
-    with timers('Subset to highly variable genes (int)'):
-        data[:, int_mask_var]
 
     with timers('Subsample to 10,000 cells'):
         data.subsample_obs(n=10_000)

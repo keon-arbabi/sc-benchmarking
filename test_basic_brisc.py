@@ -54,14 +54,14 @@ if __name__ == '__main__':
         data = data.pacmap()
 
     if not GPU:
-        with timers('Embedding (LocalMAP)'):
+        with timers('Embedding (LocalMAP)', exclude=True):
             data = data.localmap()
 
     if not GPU and NUM_THREADS != 1:
-        with timers('Embedding (UMAP)'):
+        with timers('Embedding (UMAP)', exclude=True):
             data = data.umap()
 
-        with timers('Embedding (UMAP hogwild)'):
+        with timers('Embedding (UMAP hogwild)', exclude=True):
             data = data.umap(hogwild=True, embedding_key='umap_hogwild')
 
     with timers('Find markers'):

@@ -66,7 +66,7 @@ class MemoryTimer:
         signal.signal(signal.SIGABRT, _sigterm_handler)
         atexit.register(self.shutdown)
 
-    def __call__(self, message: str) -> ContextManager[None]:
+    def __call__(self, message: str, exclude=False) -> ContextManager[None]:
         pid = os.getpid()
         @contextmanager
         def timer():
@@ -89,7 +89,7 @@ class MemoryTimer:
                     print(f'{message} {status} {time_str} using '
                           f'{memory_gb} GiB\n', flush=True)
                 self._record(message, duration, memory_gb, percent_mem,
-                             aborted)
+                             aborted, exclude)
                 gc.collect()
 
         return timer()
@@ -154,7 +154,7 @@ class MemoryTimer:
         percent_mem = np.round(max_mem[1], 2)
         return memory_gb, percent_mem
 
-    def _record(self, message, duration, memory_gb, percent_mem, aborted):
+    def _record(self, message, duration, memory_gb, percent_mem, aborted, exclude=False):
         if message in self.timings:
             self.timings[message]['duration'] += duration
             self.timings[message]['memory'] = max(
@@ -169,6 +169,7 @@ class MemoryTimer:
                 'memory': memory_gb,
                 '%mem': percent_mem,
                 'aborted': aborted,
+                'exclude': exclude,
             }
 
     def shutdown(self):
@@ -193,7 +194,8 @@ class MemoryTimer:
                         key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
 
-        total_time = sum(info['duration'] for _, info in items)
+        total_time = sum(info['duration'] for _, info in items
+                         if not info.get('exclude'))
         table_data = []
         duration_header = f'Duration ({unit})' if unit else 'Duration'
         headers = [
@@ -210,9 +212,9 @@ class MemoryTimer:
                 message,
                 status,
                 time_str,
-                f'{pct:.2f}%',
+                'N/A' if info.get('exclude') else f'{pct:.2f}%',
                 f'{memory}',
-                f'{info["%mem"]:.2f}%'
+                'N/A' if info.get('exclude') else f'{info["%mem"]:.2f}%'
             ])
 
         print(tabulate(table_data, headers=headers, tablefmt='simple'))
@@ -256,7 +258,8 @@ class MemoryTimer:
                         key=lambda x: x[1]['duration'], reverse=True)
                  if sort else list(self.timings.items()))
 
-        total = sum(info['duration'] for info in self.timings.values())
+        total = sum(info['duration'] for info in self.timings.values()
+                    if not info.get('exclude'))
 
         conv = 1.0
         if unit:
@@ -270,10 +273,10 @@ class MemoryTimer:
                 'duration': info['duration'] * conv if unit else info['duration'],
                 'duration_unit': unit or 's',
                 'aborted': info['aborted'],
-                'percentage': (info['duration'] / total * 100) if total else 0,
+                'percentage': None if info.get('exclude') else ((info['duration'] / total * 100) if total else 0),
                 'memory': info['memory'],
                 'memory_unit': 'GiB',
-                'percent_mem': info['%mem'],
+                'percent_mem': None if info.get('exclude') else info['%mem'],
             }
             for msg, info in items
         ]
