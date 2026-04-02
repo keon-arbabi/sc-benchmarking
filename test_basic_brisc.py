@@ -62,7 +62,8 @@ if __name__ == '__main__':
             data = data.umap()
 
         with timers('Embedding (UMAP hogwild)', exclude=True):
-            data = data.umap(hogwild=True, embedding_key='umap_hogwild')
+            data = data.umap(
+                hogwild=True, embedding_key='umap_hogwild')
 
     with timers('Find markers'):
         markers = data.find_markers('cell_type')
