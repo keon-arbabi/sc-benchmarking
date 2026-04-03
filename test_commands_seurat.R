@@ -68,6 +68,8 @@ timers$with_timer("Split by cell type", {
   data_split <- SplitObject(data, split.by = "cell_type_broad")
 })
 
+rm(data); gc()
+
 timers$with_timer("Concatenate cell types", {
   data <- merge(data_split[[1]], y = data_split[-1])
 })

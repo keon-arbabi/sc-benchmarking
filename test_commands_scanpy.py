@@ -59,6 +59,8 @@ if __name__ == '__main__':
         data_split = [data[data.obs['cell_type_broad'] == ct].copy()
                       for ct in data.obs['cell_type_broad'].unique()]
 
+    del data; gc.collect()
+
     with timers('Concatenate cell types'):
         data = ad.concat(data_split)
 

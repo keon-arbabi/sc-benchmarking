@@ -1,3 +1,4 @@
+import gc
 import sys
 from pathlib import Path
 import numpy as np
@@ -55,6 +56,8 @@ if __name__ == '__main__':
 
     with timers('Split by cell type'):
         data_split = data.split_by_obs('cell_type_broad')
+
+    del data; gc.collect()
 
     with timers('Concatenate cell types'):
         data = concat_obs(data_split.values())
