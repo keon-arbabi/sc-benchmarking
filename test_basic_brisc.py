@@ -42,7 +42,7 @@ if __name__ == '__main__':
         data = data.normalize()
 
     with timers('PCA'):
-        data = data.pca()
+        data = data.pca(match_parallel=(NUM_THREADS == 1))
 
     with timers('Nearest neighbors'):
         data = data.neighbors().shared_neighbors()
