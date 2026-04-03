@@ -11,6 +11,7 @@ GPU = os.uname().nodename.startswith('trig')
 DATA_NAME = sys.argv[1]
 DATA_PATH = sys.argv[2]
 NUM_THREADS = int(sys.argv[3])
+SINGLE_THREADED = NUM_THREADS == 1
 OUTPUT_PATH_TIME = sys.argv[4]
 OUTPUT_PATH_EMBEDDING = sys.argv[5]
 OUTPUT_PATH_PCS = sys.argv[6]
@@ -42,7 +43,7 @@ if __name__ == '__main__':
         data = data.normalize()
 
     with timers('PCA'):
-        data = data.pca(match_parallel=(NUM_THREADS == 1))
+        data = data.pca(match_parallel=SINGLE_THREADED)
 
     with timers('Nearest neighbors'):
         data = data.neighbors().shared_neighbors()
@@ -57,7 +58,7 @@ if __name__ == '__main__':
         with timers('Embedding (LocalMAP)', exclude=True):
             data = data.localmap()
 
-    if not GPU and NUM_THREADS != 1:
+    if not GPU and not SINGLE_THREADED:
         with timers('Embedding (UMAP)', exclude=True):
             data = data.umap()
 
