@@ -28,7 +28,7 @@ if __name__ == '__main__':
         csv_columns={'library': 'brisc', 'test': 'de',
                      'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
-    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
+    temp_file = os.path.join('/tmp', f'de_brisc_{os.path.basename(DATA_PATH)}')
     shutil.copy2(DATA_PATH, temp_file)
 
     with timers('Load data'):
