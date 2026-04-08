@@ -382,7 +382,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'#SBATCH -J {job_name}\n'
                 f'{f"#SBATCH -o {log_file}" if log_file is not None else ""}\n'
                 f'#SBATCH --signal=B:TERM@30\n'
-                f'export HDF5_USE_FILE_LOCKING=FALSE\n'
+                f'unset SLURM_TASKS_PER_NODE\n'
                 f'export PYTHONUNBUFFERED=1\n'
                 f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'export OMP_PLACES=cores\n'

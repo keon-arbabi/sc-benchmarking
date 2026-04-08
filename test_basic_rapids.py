@@ -1,6 +1,7 @@
 import os
-import gc
 import sys
+import shutil
+import gc
 import h5py
 import logging
 import numpy as np
@@ -53,8 +54,11 @@ if __name__ == '__main__':
         csv_columns={'library': 'rapids', 'test': 'basic',
                      'dataset': DATA_NAME})
 
+    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
+    shutil.copy2(DATA_PATH, temp_file)
+
     with timers('Load data'):
-        f = h5py.File(DATA_PATH, 'r')
+        f = h5py.File(temp_file, 'r')
         shape = tuple(f['X'].attrs['shape'])
         data = ad.AnnData(
             X=read_dask(f['X'], (CHUNK_SIZE, shape[1])),

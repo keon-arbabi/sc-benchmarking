@@ -21,15 +21,18 @@ timers <- MemoryTimer(
                      dataset = DATA_NAME))
 
 bpcells_dir <- file.path(
-  Sys.getenv("SCRATCH"), "bpcells", "manipulation", paste0("data_", DATA_NAME))
+  "/tmp", "bpcells", "manipulation", paste0("data_", DATA_NAME))
 unlink(bpcells_dir, recursive = TRUE)
 
+temp_file <- file.path("/tmp", basename(DATA_PATH))
+file.copy(DATA_PATH, temp_file, overwrite = TRUE)
+
 # Setup
-mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
+mat_disk <- open_matrix_anndata_hdf5(path = temp_file)
 mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
 write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
 mat <- open_matrix_dir(dir = bpcells_dir)
-obs_metadata <- read_h5ad_obs(DATA_PATH)
+obs_metadata <- read_h5ad_obs(temp_file)
 data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 rm(mat_disk, mat, obs_metadata); gc()
 

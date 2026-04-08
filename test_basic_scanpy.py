@@ -1,4 +1,6 @@
+import os
 import sys
+import shutil
 import numpy as np
 import polars as pl
 import scanpy as sc
@@ -7,6 +9,7 @@ sys.path.append(f'{Path.home()}/sc-benchmarking')
 from utils_local import MemoryTimer, system_info
 
 import warnings
+# For sc.tl.rank_genes_groups
 warnings.filterwarnings('ignore', message='DataFrame is highly fragmented')
 
 DATA_NAME = sys.argv[1]
@@ -28,8 +31,11 @@ if __name__ == '__main__':
         csv_columns={'library': 'scanpy', 'test': 'basic',
                      'dataset': DATA_NAME})
 
+    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
+    shutil.copy2(DATA_PATH, temp_file)
+
     with timers('Load data'):
-        data = sc.read_h5ad(DATA_PATH)
+        data = sc.read_h5ad(temp_file)
 
     with timers('Quality control'):
         data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')

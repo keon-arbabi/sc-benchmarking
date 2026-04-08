@@ -1,4 +1,6 @@
+import os
 import sys
+import shutil
 import scanpy as sc
 import anndata as ad
 from pathlib import Path
@@ -21,8 +23,11 @@ if __name__ == '__main__':
         csv_columns={'library': 'scanpy', 'test': 'manipulation',
                      'dataset': DATA_NAME})
 
+    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
+    shutil.copy2(DATA_PATH, temp_file)
+
     # Setup
-    data = sc.read_h5ad(DATA_PATH)
+    data = sc.read_h5ad(temp_file)
     data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
     data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
     sc.pp.calculate_qc_metrics(

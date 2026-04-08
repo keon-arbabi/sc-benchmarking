@@ -38,8 +38,7 @@ def exact_knn(PCs, k=20, batch_size=100_000, max_queries=None, seed=0):
 
     if max_queries is not None and n > max_queries:
         rng = np.random.default_rng(seed)
-        query_idx = np.sort(
-            rng.choice(n, size=max_queries, replace=False))
+        query_idx = np.sort(rng.choice(n, size=max_queries, replace=False))
         queries = PCs[query_idx]
         nq = max_queries
     else:

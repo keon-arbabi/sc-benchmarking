@@ -1,5 +1,7 @@
 import gc
+import os
 import sys
+import shutil
 from pathlib import Path
 import numpy as np
 import polars as pl
@@ -27,8 +29,11 @@ if __name__ == '__main__':
         csv_columns={'library': 'brisc', 'test': 'manipulation',
                         'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
+    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
+    shutil.copy2(DATA_PATH, temp_file)
+
     # Setup
-    data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
+    data = SingleCell(temp_file, num_threads=NUM_THREADS)\
         .qc(subset=False, allow_float=True)\
         .hvg()
 
