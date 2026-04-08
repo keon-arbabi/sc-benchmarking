@@ -27,7 +27,7 @@ timers <- MemoryTimer(
   csv_columns = list(library = "seurat", test = "transfer",
                      dataset = DATA_NAME, num_threads = "single-threaded"))
 
-temp_file <- file.path("/tmp", paste0("transfer_seurat_", basename(DATA_PATH)))
+temp_file <- file.path("/tmp", basename(DATA_PATH))
 file.copy(DATA_PATH, temp_file, overwrite = TRUE)
 
 # BPCells native functions required:

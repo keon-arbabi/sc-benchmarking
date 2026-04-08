@@ -28,7 +28,7 @@ bpcells_dir <- file.path(
   "/tmp", "bpcells", "basic", paste0("data_", DATA_NAME))
 unlink(bpcells_dir, recursive = TRUE)
 
-temp_file <- file.path("/tmp", paste0("basic_seurat_", basename(DATA_PATH)))
+temp_file <- file.path("/tmp", basename(DATA_PATH))
 file.copy(DATA_PATH, temp_file, overwrite = TRUE)
 
 # BPCells native functions required:

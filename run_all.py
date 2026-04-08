@@ -20,27 +20,27 @@ PYTHON = '/home/wainberg/bin/python3.14'
 PYTHON_RAPIDS = '/home/karbabi/miniforge3/bin/python'
 
 DATASETS = {
-    # 'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
-    # 'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
+    'SEAAD': os.path.join(DATA_DIR, 'SEAAD', 'SEAAD_raw.h5ad'),
+    'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
     'PANSCI': os.path.join(DATA_DIR, 'PanSci', 'PanSci_raw.h5ad'),
 }
-THREADS = [-1]
+THREADS = [-1, 1]
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', THREADS, False),
-    # ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
-    # ('test_basic_seurat.R', 'seurat', 'basic', None, False),
-    # ('test_basic_rapids.py', 'rapids', 'basic', None, True),
-    # ('test_basic_brisc.py', 'brisc', 'basic', THREADS, True),
-    # ('test_de_brisc.py', 'brisc', 'de', THREADS, False),
-    # ('test_de_scanpy.py', 'scanpy', 'de', None, False),
-    # ('test_de_seurat.R', 'seurat', 'de', None, False),
-    # ('test_transfer_brisc.py', 'brisc', 'transfer', THREADS, False),
-    # ('test_transfer_scanpy.py', 'scanpy', 'transfer', None, False),
-    # ('test_transfer_seurat.R', 'seurat', 'transfer', None, False),
-    # ('test_commands_brisc.py', 'brisc', 'commands', THREADS, False),
-    # ('test_commands_scanpy.py', 'scanpy', 'commands', None, False),
-    # ('test_commands_seurat.R', 'seurat', 'commands', None, False),
+    ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
+    ('test_basic_seurat.R', 'seurat', 'basic', None, False),
+    ('test_basic_rapids.py', 'rapids', 'basic', None, True),
+    ('test_basic_brisc.py', 'brisc', 'basic', THREADS, True),
+    ('test_de_brisc.py', 'brisc', 'de', THREADS, False),
+    ('test_de_scanpy.py', 'scanpy', 'de', None, False),
+    ('test_de_seurat.R', 'seurat', 'de', None, False),
+    ('test_transfer_brisc.py', 'brisc', 'transfer', THREADS, False),
+    ('test_transfer_scanpy.py', 'scanpy', 'transfer', None, False),
+    ('test_transfer_seurat.R', 'seurat', 'transfer', None, False),
+    ('test_commands_brisc.py', 'brisc', 'commands', THREADS, False),
+    ('test_commands_scanpy.py', 'scanpy', 'commands', None, False),
+    ('test_commands_seurat.R', 'seurat', 'commands', None, False),
 ]
 SHORT = {
     'basic': 'ba', 'de': 'de', 'transfer': 'tr', 'commands': 'cm',

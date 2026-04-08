@@ -16,6 +16,9 @@ from contextlib import contextmanager
 from typing import ContextManager
 from tabulate import tabulate
 
+def plural(string: str, count: int) -> str:
+    return string if abs(count) == 1 else f'{string}s'
+
 def run(cmd, *, log_file=None, unbuffered=False, pipefail=True,
         num_threads=None, **kwargs):
     run_kwargs = dict(check=True, shell=True, executable='/bin/bash')
@@ -352,8 +355,8 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
             if memory is not None else ''
         partition_description = \
             f' on the {partition} partition' if partition is not None else ''
-        print(f'Requesting {CPUs} CPUs, {GPUs} GPUs'
-              f'{memory_description} for {runtime}'
+        print(f'Requesting {CPUs} {plural("CPU", CPUs)}, {GPUs} '
+              f'{plural("GPU", GPUs)}{memory_description} for {runtime}'
               f'{partition_description}...')
     job_name = job_name.replace(' ', '_')
     from tempfile import NamedTemporaryFile
@@ -364,7 +367,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 if partition is not None else ''
             account_settings = f'#SBATCH --account={account}\n' \
                 if account is not None else ''
-            cpu_settings = '' if cluster == 'trillium-gpu' else \
+            cpu_settings = '' if cluster.startswith('trillium') else \
                 f'#SBATCH -c {CPUs}\n'
             gpu_settings = f'#SBATCH --gpus-per-node=h100:{GPUs}\n' \
                 if GPUs > 0 else ''
@@ -375,6 +378,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'{partition_settings}'
                 f'{account_settings}'
                 f'#SBATCH -N 1\n'
+                f'#SBATCH -n 1\n'
                 f'{gpu_settings}'
                 f'{cpu_settings}'
                 f'{memory_settings}'
@@ -382,7 +386,6 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'#SBATCH -J {job_name}\n'
                 f'{f"#SBATCH -o {log_file}" if log_file is not None else ""}\n'
                 f'#SBATCH --signal=B:TERM@30\n'
-                f'unset SLURM_TASKS_PER_NODE\n'
                 f'export PYTHONUNBUFFERED=1\n'
                 f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'export OMP_PLACES=cores\n'
@@ -395,13 +398,9 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'wait $CHILD\n'
                 f'exit $?\n',
                 file=temp_file)
-        # On Trillium, sbatch is a wrapper and .sbatch is the actual sbatch.
-        # On Trillium-GPU the same wrapper exists but needs CLUSTER=trillium.
         sbatch = '.sbatch' if cluster.startswith('trillium') else 'sbatch'
-        env = {**os.environ, 'CLUSTER': 'trillium'} \
-            if cluster == 'trillium-gpu' else None
         sbatch_message = run(f'{sbatch} {temp_file.name}',
-                             stdout=subprocess.PIPE, env=env)\
+                             stdout=subprocess.PIPE)\
             .stdout.decode().rstrip('\n')
         print(f'{sbatch_message} ("{job_name}")')
     finally:

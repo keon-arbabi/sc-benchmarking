@@ -23,7 +23,7 @@ if __name__ == '__main__':
         csv_columns={'library': 'scanpy', 'test': 'manipulation',
                      'dataset': DATA_NAME})
 
-    temp_file = os.path.join('/tmp', f'manipulation_scanpy_{os.path.basename(DATA_PATH)}')
+    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
     shutil.copy2(DATA_PATH, temp_file)
 
     # Setup

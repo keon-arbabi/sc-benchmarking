@@ -26,7 +26,7 @@ timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
   csv_columns = list(library = "seurat", test = "de", dataset = DATA_NAME))
 
-temp_file <- file.path("/tmp", paste0("de_seurat_", basename(DATA_PATH)))
+temp_file <- file.path("/tmp", basename(DATA_PATH))
 file.copy(DATA_PATH, temp_file, overwrite = TRUE)
 
 # BPCells native functions required:
