@@ -24,13 +24,7 @@ DATASETS = {
     'PBMC': os.path.join(DATA_DIR, 'PBMC', 'Parse_PBMC_raw.h5ad'),
     'PANSCI': os.path.join(DATA_DIR, 'PanSci', 'PanSci_raw.h5ad'),
 }
-SHORT = {
-    'basic': 'ba', 'de': 'de', 'transfer': 'tr', 'commands': 'cm',
-    'brisc': 'br', 'scanpy': 'sc', 'seurat': 'sr', 'rapids': 'rp',
-    'SEAAD': 'SE', 'PBMC': 'PB', 'PANSCI': 'PS',
-}
-THREADS = [-1]
-
+THREADS = [-1, 1]
 # (file, tool, task, thread_params, gpu)
 SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', THREADS, False),
@@ -48,6 +42,11 @@ SCRIPTS = [
     ('test_commands_scanpy.py', 'scanpy', 'commands', None, False),
     ('test_commands_seurat.R', 'seurat', 'commands', None, False),
 ]
+SHORT = {
+    'basic': 'ba', 'de': 'de', 'transfer': 'tr', 'commands': 'cm',
+    'brisc': 'br', 'scanpy': 'sc', 'seurat': 'sr', 'rapids': 'rp',
+    'SEAAD': 'SE', 'PBMC': 'PB', 'PANSCI': 'PS',
+}
 OUTPUTS = {
     'basic': ['embedding', 'pcs', 'neighbors'],
     'de': ['de'],
