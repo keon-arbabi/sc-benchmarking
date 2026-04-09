@@ -1,7 +1,6 @@
 import os
-import sys
-import shutil
 import gc
+import sys
 import h5py
 import logging
 import numpy as np
@@ -54,11 +53,8 @@ if __name__ == '__main__':
         csv_columns={'library': 'rapids', 'test': 'basic',
                      'dataset': DATA_NAME})
 
-    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
-    shutil.copy2(DATA_PATH, temp_file)
-
     with timers('Load data'):
-        f = h5py.File(temp_file, 'r')
+        f = h5py.File(DATA_PATH, 'r')
         shape = tuple(f['X'].attrs['shape'])
         data = ad.AnnData(
             X=read_dask(f['X'], (CHUNK_SIZE, shape[1])),
@@ -90,7 +86,7 @@ if __name__ == '__main__':
 
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
-            data, n_top_genes=5000, flavor="cell_ranger")
+            data, n_top_genes=2000, flavor="cell_ranger")
         data = data[:, data.var.highly_variable].copy()
 
     with timers('PCA'):
@@ -115,19 +111,14 @@ if __name__ == '__main__':
             data, n_neighbors=15, n_pcs=50, algorithm='mg_ivfflat')
 
     with timers('Clustering'):
-        for res in [0.25, 0.5, 1.0, 1.5, 2.0]:
-            rsc.tl.leiden(
-                data,
-                resolution=res,
-                key_added=f'leiden_res_{res:4.2f}')
+        rsc.tl.leiden(data, resolution=[0.25, 0.5, 1.0, 1.5, 2.0])
 
     with timers('Embedding'):
         rsc.tl.umap(data)
 
     with timers('Find markers'):
         rsc.tl.rank_genes_groups(
-            data, groupby='cell_type',
-            method='logreg', use_raw=False)
+            data, groupby='cell_type', method='logreg', use_raw=False)
 
     pcs = data.obsm['X_pca'].get()
     pc_df = pl.DataFrame({
@@ -152,11 +143,11 @@ if __name__ == '__main__':
         'embed_2': umap_coords[:, 1],
         'cell_type': data.obs['cell_type'].tolist(),
         'cell_type_broad': data.obs['cell_type_broad'].tolist(),
-        'cluster_res_0.25': data.obs['leiden_res_0.25'].tolist(),
-        'cluster_res_0.5': data.obs['leiden_res_0.50'].tolist(),
-        'cluster_res_1.0': data.obs['leiden_res_1.00'].tolist(),
-        'cluster_res_1.5': data.obs['leiden_res_1.50'].tolist(),
-        'cluster_res_2.0': data.obs['leiden_res_2.00'].tolist(),
+        'cluster_res_0.25': data.obs['leiden_0.25'].tolist(),
+        'cluster_res_0.5': data.obs['leiden_0.5'].tolist(),
+        'cluster_res_1.0': data.obs['leiden_1.0'].tolist(),
+        'cluster_res_1.5': data.obs['leiden_1.5'].tolist(),
+        'cluster_res_2.0': data.obs['leiden_2.0'].tolist(),
     })
     embedding_df.write_csv(OUTPUT_PATH_EMBEDDING)
 

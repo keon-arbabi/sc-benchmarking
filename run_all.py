@@ -96,9 +96,10 @@ def run_jobs(scripts):
                     short_parts.append('g')
                 slurm_name = '_'.join(short_parts)
 
-                run_slurm(' '.join(cmd),
-                          account='def-wainberg' if gpu else 'def-wainberg',
-                          job_name=slurm_name, log_file=log, hours=24)
+                run_slurm(
+                    ' '.join(cmd),
+                    account='def-wainberg' if gpu else 'rrg-shreejoy',
+                    job_name=slurm_name, log_file=log, hours=24)
 
 if __name__ == '__main__':
     is_gpu = os.environ.get('CLUSTER') == 'trillium-gpu'

@@ -14,7 +14,7 @@ OUTPUT_PATH_TIME <- args[3]
 OUTPUT_PATH_DE <- args[4]
 
 bpcells_dir <- file.path(
-  "/tmp", "bpcells", "de", paste0("data_", DATA_NAME))
+  Sys.getenv("SCRATCH"), "bpcells", "de", paste0("data_", DATA_NAME))
 unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
@@ -26,19 +26,16 @@ timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
   csv_columns = list(library = "seurat", test = "de", dataset = DATA_NAME))
 
-temp_file <- file.path("/tmp", basename(DATA_PATH))
-file.copy(DATA_PATH, temp_file, overwrite = TRUE)
-
 # BPCells native functions required:
 # Loading from h5ad and writing to disk
 timers$with_timer("Load data", {
-  mat_disk <- open_matrix_anndata_hdf5(path = temp_file)
+  mat_disk <- open_matrix_anndata_hdf5(path = DATA_PATH)
   mat_disk <- convert_matrix_type(mat_disk, type = "uint32_t")
   write_matrix_dir(mat = mat_disk, dir = bpcells_dir)
   mat <- open_matrix_dir(dir = bpcells_dir)
   # Custom reader function for reading obs
   # without loading the entire h5ad
-  obs_metadata <- read_h5ad_obs(temp_file)
+  obs_metadata <- read_h5ad_obs(DATA_PATH)
   data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 })
 

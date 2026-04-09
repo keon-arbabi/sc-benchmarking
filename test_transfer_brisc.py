@@ -1,7 +1,5 @@
 import gc
-import os
 import sys
-import shutil
 from pathlib import Path
 sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
@@ -27,11 +25,8 @@ if __name__ == '__main__':
         csv_columns={'library': 'brisc', 'test': 'transfer',
                      'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
-    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
-    shutil.copy2(DATA_PATH, temp_file)
-
     with timers('Load data'):
-        data = SingleCell(temp_file, num_threads=NUM_THREADS)
+        data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)
 
     with timers('Quality control'):
         data = data.qc(subset=False, allow_float=True)

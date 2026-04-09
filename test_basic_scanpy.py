@@ -1,6 +1,4 @@
-import os
 import sys
-import shutil
 import numpy as np
 import polars as pl
 import scanpy as sc
@@ -31,11 +29,8 @@ if __name__ == '__main__':
         csv_columns={'library': 'scanpy', 'test': 'basic',
                      'dataset': DATA_NAME})
 
-    temp_file = os.path.join('/tmp', os.path.basename(DATA_PATH))
-    shutil.copy2(DATA_PATH, temp_file)
-
     with timers('Load data'):
-        data = sc.read_h5ad(temp_file)
+        data = sc.read_h5ad(DATA_PATH)
 
     with timers('Quality control'):
         data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
