@@ -390,6 +390,7 @@ def run_slurm(cmd, *, job_name='job', log_file=None,
                 f'export R_LIBS_USER=/home/wainberg/R/x86_64-pc-linux-gnu-library/4.4\n'
                 f'export OMP_PLACES=cores\n'
                 f'export OMP_PROC_BIND=spread\n'
+                f'export HDF5_USE_FILE_LOCKING=FALSE\n'
                 f'set -m\n'
                 f'{cmd} &\n'
                 f'CHILD=$!\n'

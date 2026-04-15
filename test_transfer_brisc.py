@@ -46,7 +46,7 @@ if __name__ == '__main__':
     with timers('PCA'):
         data_ref, data_query = data_ref.pca(data_query)
 
-    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PANSCI' else 'cell_type'
+    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
 
     with timers('Transfer labels'):
         data_ref, data_query = data_ref.harmonize(data_query)

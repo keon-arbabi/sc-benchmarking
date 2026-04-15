@@ -15,13 +15,13 @@ grp <- list(
   colors = c("brisc (MT)" = "#d62728", "brisc (ST)" = "#e8726a",
              "scanpy" = "#8fbc8f", "Seurat" = "#a8c4dc"))
 
-datasets <- c("SEAAD", "PBMC", "PANSCI")
+datasets <- c("SEAAD", "Parse", "PanSci")
 ds_lab <- c(
   SEAAD = "1.2M cells (SEAAD)",
-  PBMC = "9.7M cells (Parse PBMC)",
-            PANSCI = "20.3M cells (PanSci)")
-ds_unit <- c(SEAAD = "s", PBMC = "h", PANSCI = "m")
-ds_div <- c(SEAAD = 1, PBMC = 3600, PANSCI = 60)
+  Parse = "9.7M cells (Parse PBMC)",
+  PanSci = "20.3M cells (PanSci)")
+ds_unit <- c(SEAAD = "s", Parse = "h", PanSci = "m")
+ds_div <- c(SEAAD = 1, Parse = 3600, PanSci = 60)
 
 wf_lab <- c(basic = "Basic workflow", transfer = "Label transfer",
             de = "Differential expression")

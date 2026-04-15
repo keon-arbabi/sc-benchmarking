@@ -57,11 +57,11 @@ if (DATA_NAME == "SEAAD") {
   data <- subset(data, subset = !is.na(cond))
   group_cols <- c("cond", "sample", "cell_type")
   ident_pairs <- list(test = "AD", ref = "Control")
-} else if (DATA_NAME == "PBMC") {
+} else if (DATA_NAME == "Parse") {
   data <- subset(data, subset = cytokine %in% c("IFN-gamma", "PBS"))
   group_cols <- c("cytokine", "sample", "cell_type")
   ident_pairs <- list(test = "IFN-gamma", ref = "PBS")
-} else if (DATA_NAME == "PANSCI") {
+} else if (DATA_NAME == "PanSci") {
   data <- subset(data, subset = !is.na(cond))
   group_cols <- c("cond", "sample", "cell_type")
   ident_pairs <- list(test = "Aged", ref = "Young")

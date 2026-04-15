@@ -120,24 +120,35 @@ del sc; gc.collect()
 # https://www.biorxiv.org/content/10.64898/2025.12.12.693897v1
 # https://www.parsebiosciences.com/datasets/10-million-human-pbmcs-in-a-single-experiment/
 
-dir_data = f'{_HOME_DIR}/single-cell/PBMC'
+dir_data = f'{_HOME_DIR}/single-cell/Parse'
 os.makedirs(dir_data, exist_ok=True)
 
-file_data = f'{dir_data}/Parse_PBMC_cytokines.h5ad'
+file_data = f'{dir_data}/Parse_cytokines.h5ad'
 if not os.path.exists(file_data):
     run(f'wget https://parse-wget.s3.us-west-2.amazonaws.com/10m/'
         f'Parse_10M_PBMC_cytokines.h5ad -O {file_data}')
 
 cell_type_broad_map = {
     # T cells
-    'CD4 Naive': 'T cell', 'CD4 Memory': 'T cell', 'CD8 Naive': 'T cell',
-    'CD14 Mono': 'Myeloid', 'CD16 Mono': 'Myeloid', 'cDC': 'Myeloid',
+    'CD4 Naive': 'T cell',
+    'CD4 Memory': 'T cell',
+    'CD8 Naive': 'T cell',
+    'CD14 Mono': 'Myeloid',
+    'CD16 Mono': 'Myeloid',
+    'cDC': 'Myeloid',
     'pDC': 'Myeloid',
     # NK/ILC
-    'CD8 Memory': 'T cell', 'Treg': 'T cell', 'MAIT': 'T cell', 'NKT': 'T cell',
-    'NK': 'NK/ILC', 'NK CD56bright': 'NK/ILC', 'ILC': 'NK/ILC',
+    'CD8 Memory': 'T cell',
+    'Treg': 'T cell',
+    'MAIT': 'T cell',
+    'NKT': 'T cell',
+    'NK': 'NK/ILC',
+    'NK CD56bright':
+    'NK/ILC',
+    'ILC': 'NK/ILC',
     # B cells
-    'B Naive': 'B cell', 'B Intermediate/Memory': 'B cell',
+    'B Naive': 'B cell',
+    'B Intermediate/Memory': 'B cell',
     'Plasmablast': 'B cell',
     # Progenitors
     'HSPC': 'Progenitor',
@@ -198,9 +209,9 @@ column       value
  gene_symbol  TSPAN6
 '''
 
-sc.save(f'{dir_data}/Parse_PBMC_raw.h5ad', overwrite=True)
+sc.save(f'{dir_data}/Parse_raw.h5ad', overwrite=True)
 sc.subsample_obs(n=200000, by_column='cell_type', QC_column=None)\
-    .save(f'{dir_data}/Parse_PBMC_raw_200K.h5ad', overwrite=True)
+    .save(f'{dir_data}/Parse_raw_200K.h5ad', overwrite=True)
 
 del sc; gc.collect()
 

@@ -55,7 +55,7 @@ if __name__ == '__main__':
                     categorical_columns=['cond'],
                     verbose=False)
 
-        elif DATA_NAME == 'PBMC':
+        elif DATA_NAME == 'Parse':
             formula = '~ 0 + cond + donor + ' \
                 'log2(num_cells) + log2(library_size)'
             contrasts = {
@@ -68,7 +68,7 @@ if __name__ == '__main__':
                     categorical_columns=['donor', 'cond'],
                     verbose=False)
 
-        elif DATA_NAME == 'PANSCI':
+        elif DATA_NAME == 'PanSci':
             formula = '~ 0 + cond + sex + ' \
                 'log2(num_cells) + log2(library_size)'
             contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}

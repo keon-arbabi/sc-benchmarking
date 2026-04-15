@@ -6,7 +6,7 @@ import numpy as np
 import polars as pl
 
 OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
-DATASETS = ['SEAAD', 'PBMC']
+DATASETS = ['SEAAD', 'Parse']
 LIBRARIES = {
     'brisc': {
         'pcs': 'basic_brisc_{dataset}_-1_pcs.csv',

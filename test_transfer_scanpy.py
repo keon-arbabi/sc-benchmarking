@@ -57,7 +57,7 @@ if __name__ == '__main__':
     with timers('PCA'):
         sc.pp.pca(data_ref)
 
-    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PANSCI' else 'cell_type'
+    cell_type_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
     data_query.obs['cell_type_orig'] = data_query.obs[cell_type_col]
 
     with timers('Transfer labels'):

@@ -57,9 +57,9 @@ if __name__ == '__main__':
 
         if DATA_NAME == 'SEAAD':
             contrast = ['cond', 'AD', 'Control']
-        elif DATA_NAME == 'PBMC':
+        elif DATA_NAME == 'Parse':
             contrast = ['cond', 'IFN-gamma', 'PBS']
-        elif DATA_NAME == 'PANSCI':
+        elif DATA_NAME == 'PanSci':
             contrast = ['cond', 'Aged', 'Young']
 
         de = {}

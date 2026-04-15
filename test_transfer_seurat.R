@@ -75,7 +75,7 @@ timers$with_timer("PCA", {
   data_ref <- RunPCA(data_ref)
 })
 
-cell_type_col <- if (DATA_NAME == "PANSCI") "cell_type_fine" else "cell_type"
+cell_type_col <- if (DATA_NAME == "PanSci") "cell_type_fine" else "cell_type"
 
 timers$with_timer("Transfer labels", {
     anchors <- FindTransferAnchors(
