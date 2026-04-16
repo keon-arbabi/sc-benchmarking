@@ -174,6 +174,17 @@ class MemoryTimer:
                 'aborted': aborted,
                 'exclude': exclude,
             }
+        self._write_csv()
+
+    def _write_csv(self):
+        if not self._csv_path or not self.timings:
+            return
+        df = self.to_dataframe(sort=False, unit=self._unit)
+        if self._csv_columns:
+            df = df.with_columns(
+                [pl.lit(v).alias(k)
+                 for k, v in self._csv_columns.items()])
+        df.write_csv(self._csv_path)
 
     def shutdown(self):
         # Write timing summary and CSV. No-op if already called.
@@ -183,13 +194,7 @@ class MemoryTimer:
         if not self.timings:
             return
         self.print_summary(unit=self._summary_unit)
-        if self._csv_path:
-            df = self.to_dataframe(sort=False, unit=self._unit)
-            if self._csv_columns:
-                df = df.with_columns(
-                    [pl.lit(v).alias(k)
-                     for k, v in self._csv_columns.items()])
-            df.write_csv(self._csv_path)
+        self._write_csv()
 
     def print_summary(self, sort=False, unit=None):
         print('\n--- Timing Summary ---')

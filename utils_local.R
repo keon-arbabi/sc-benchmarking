@@ -116,6 +116,7 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
           '%s %s %s using %.2f GiB\n\n',
           message, status, time_str, new_memory))
       }
+      write_csv_now()
       gc()
     })
     # Re-throw after cleanup, preserving the original condition class.
@@ -304,20 +305,24 @@ MemoryTimer = function(silent = TRUE, csv_path = NULL, csv_columns = NULL,
     )
   }
 
+  write_csv_now = function() {
+    if (is.null(env$.csv_path) || length(env$timings) == 0)
+      return(invisible(NULL))
+    df <- to_dataframe(sort = FALSE, unit = env$.unit)
+    if (!is.null(env$.csv_columns)) {
+      for (col_name in names(env$.csv_columns)) {
+        df[[col_name]] <- env$.csv_columns[[col_name]]
+      }
+    }
+    write.csv(df, env$.csv_path, row.names = FALSE)
+  }
+
   shutdown = function() {
     if (env$.shutdown_done) return(invisible(NULL))
     env$.shutdown_done <- TRUE
     if (length(env$timings) == 0) return(invisible(NULL))
     print_summary(unit = env$.summary_unit)
-    if (!is.null(env$.csv_path)) {
-      df <- to_dataframe(sort = FALSE, unit = env$.unit)
-      if (!is.null(env$.csv_columns)) {
-        for (col_name in names(env$.csv_columns)) {
-          df[[col_name]] <- env$.csv_columns[[col_name]]
-        }
-      }
-      write.csv(df, env$.csv_path, row.names = FALSE)
-    }
+    write_csv_now()
   }
 
   # Auto-flush timings on R exit (e.g. SLURM timeout)

@@ -36,7 +36,8 @@ if __name__ == '__main__':
         data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
         data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
         sc.pp.calculate_qc_metrics(
-            data, qc_vars=['mt', 'malat1'], inplace=True)
+            data, qc_vars=['mt', 'malat1'],
+            percent_top=None, log1p=False, inplace=True)
         keep = ((data.obs['n_genes_by_counts'].values >= 100) &
                 (data.obs['pct_counts_mt'].values <= 5) &
                 (data.obs['pct_counts_malat1'].values > 0))

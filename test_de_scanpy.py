@@ -34,7 +34,8 @@ if __name__ == '__main__':
         data_sc.var['mt'] = data_sc.var_names.str.upper().str.startswith('MT-')
         data_sc.var['malat1'] = data_sc.var_names.str.upper() == 'MALAT1'
         sc.pp.calculate_qc_metrics(
-            data_sc, qc_vars=['mt', 'malat1'], inplace=True)
+            data_sc, qc_vars=['mt', 'malat1'],
+            percent_top=None, log1p=False, inplace=True)
         keep = ((data_sc.obs['n_genes_by_counts'].values >= 100) &
                 (data_sc.obs['pct_counts_mt'].values <= 5) &
                 (data_sc.obs['pct_counts_malat1'].values > 0))
@@ -52,7 +53,9 @@ if __name__ == '__main__':
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
 
     with timers('Differential expression'):
-        inference = DefaultInference(n_cpus=os.cpu_count())
+        # PyDESeq2 paper benchmarks on 8 cores (Muzellec et al. 2023); beyond
+        # that, joblib dispatch dominates per-gene IRLS on small problems.
+        inference = DefaultInference(n_cpus=16)
         cell_types = data_pb.obs['cell_type'].unique()
 
         if DATA_NAME == 'SEAAD':
@@ -67,7 +70,8 @@ if __name__ == '__main__':
             data_pb_ct = data_pb[data_pb.obs['cell_type'] == ct].copy()
             if data_pb_ct.obs['cond'].nunique() < 2:
                 continue
-            dc.pp.filter_by_expr(data_pb_ct, group='cond', min_count=10)
+            dc.pp.filter_by_expr(
+                data_pb_ct, group='cond', min_count=10)
             dds = DeseqDataSet(
                 adata=data_pb_ct, design='~ cond',
                 refit_cooks=True, inference=inference, quiet=True)

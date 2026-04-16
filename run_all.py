@@ -1,9 +1,19 @@
 import os
 import sys
+import subprocess
 from pathlib import Path
 _HOME_DIR = Path.home()
 sys.path.append(f'{_HOME_DIR}/sc-benchmarking')
 from utils_local import run_slurm
+
+def _slurm_job_pending_or_running(job_name):
+    try:
+        result = subprocess.run(
+            ['squeue', '--me', f'--name={job_name}', '--noheader'],
+            capture_output=True, text=True, timeout=10)
+        return bool(result.stdout.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 DATA_DIR = f'{_HOME_DIR}/single-cell'
 WORK_DIR = f'{_HOME_DIR}/sc-benchmarking'
@@ -87,18 +97,22 @@ def run_jobs(scripts):
                             print(f'Skipping completed job: {job_name}')
                             continue
 
-                cmd = [interpreter, script_path, d_name, d_path]
-                if threads is not None:
-                    cmd.append(str(threads))
-                cmd.append(out(job_name, 'timer'))
-                cmd.extend(out(job_name, s) for s in OUTPUTS[task])
-
                 short_parts = [SHORT[task] + SHORT[tool], SHORT[d_name]]
                 if threads is not None:
                     short_parts.append(str(threads))
                 if gpu:
                     short_parts.append('g')
                 slurm_name = '_'.join(short_parts)
+
+                if _slurm_job_pending_or_running(slurm_name):
+                    print(f'Skipping in-progress job: {job_name}')
+                    continue
+
+                cmd = [interpreter, script_path, d_name, d_path]
+                if threads is not None:
+                    cmd.append(str(threads))
+                cmd.append(out(job_name, 'timer'))
+                cmd.extend(out(job_name, s) for s in OUTPUTS[task])
 
                 run_slurm(
                     ' '.join(cmd),
