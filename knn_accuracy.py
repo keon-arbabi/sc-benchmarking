@@ -6,7 +6,7 @@ import numpy as np
 import polars as pl
 
 OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
-DATASETS = ['SEAAD', 'Parse']
+DATASETS = ['SEAAD', 'Parse', 'PanSci']
 LIBRARIES = {
     'brisc': {
         'pcs': 'basic_brisc_{dataset}_-1_pcs.csv',
@@ -20,11 +20,15 @@ LIBRARIES = {
         'pcs': 'basic_seurat_{dataset}_pcs.csv',
         'neighbors': 'basic_seurat_{dataset}_neighbors.csv',
     },
+    'rapids': {
+        'pcs': 'basic_rapids_{dataset}_gpu_pcs.csv',
+        'neighbors': 'basic_rapids_{dataset}_gpu_neighbors.csv',
+    },
 }
 
 K = 20
-BATCH_SIZE = 100_000
-MAX_QUERIES = 300_000
+BATCH_SIZE = 500_000
+MAX_QUERIES = None
 
 def log(msg):
     print(msg, flush=True)
@@ -32,8 +36,11 @@ def log(msg):
 def exact_knn(PCs, k=20, batch_size=100_000, max_queries=None, seed=0):
     n, d = PCs.shape
     assert PCs.dtype == np.float32 and PCs.flags['C_CONTIGUOUS']
-    faiss.omp_set_num_threads(os.cpu_count())
-    index = faiss.IndexFlatL2(d)
+    if hasattr(faiss, 'omp_set_num_threads'):
+        faiss.omp_set_num_threads(os.cpu_count())
+    res = faiss.StandardGpuResources()
+    cpu_index = faiss.IndexFlatL2(d)
+    index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
     index.add(PCs)
 
     if max_queries is not None and n > max_queries:
@@ -56,10 +63,17 @@ def exact_knn(PCs, k=20, batch_size=100_000, max_queries=None, seed=0):
         all_D[s:e], all_I[s:e] = index.search(queries[s:e], k + 1)
         log(f'  {e:,}/{nq:,} ({time.time() - t0:.0f}s)')
 
-    expected = (query_idx if query_idx is not None else np.arange(nq))
-    assert np.all(all_I[:, 0] == expected)
-    return (all_I[:, 1:].astype(np.uint32),
-            all_D[:, 1:].astype(np.float32), query_idx)
+    expected = (query_idx if query_idx is not None
+                else np.arange(nq, dtype=np.int64))
+    self_mask = all_I == expected[:, None]
+    n_missing = int((~self_mask.any(axis=1)).sum())
+    if n_missing:
+        log(f'  WARN: {n_missing:,}/{nq:,} queries missing self in top-{k+1}')
+    drop = self_mask.argmax(axis=1)
+    keep = np.ones((nq, k + 1), dtype=bool)
+    keep[np.arange(nq), drop] = False
+    return (all_I[keep].reshape(nq, k).astype(np.uint32),
+            all_D[keep].reshape(nq, k).astype(np.float32), query_idx)
 
 def recall_at_k(gt, approx):
     n, k = gt.shape

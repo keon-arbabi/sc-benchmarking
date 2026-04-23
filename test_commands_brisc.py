@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 import numpy as np
 import polars as pl
-import polars.selectors as cs
 sys.path.append(f'{Path.home()}')
 sys.path.append(f'{Path.home()}/sc-benchmarking')
 from single_cell import SingleCell, concat_obs
@@ -32,27 +31,20 @@ if __name__ == '__main__':
         .qc(subset=False, allow_float=True)\
         .hvg()
 
-    cell_name = data.obs_names[0]
     gene_name = data.var_names[0]
     cell_type_select = data.obs['cell_type'][0]
-
-    with timers('Get expression by cell'):
-        data.cell(cell_name)
 
     with timers('Get expression by gene'):
         data.gene(gene_name)
 
     with timers('Subset to one cell type'):
-        data.filter_obs(cell_type=cell_type_select)
+        data.filter_obs(pl.col(cell_type).eq(cell_type_select))
 
     with timers('Subset to highly variable genes'):
         data.filter_var(pl.col('highly_variable'))
 
     with timers('Subsample to 10,000 cells'):
         data.subsample_obs(n=10_000)
-
-    with timers('Select categorical columns'):
-        data.select_obs(cs.categorical())
 
     with timers('Split by cell type'):
         data_split = data.split_by_obs('cell_type_broad')

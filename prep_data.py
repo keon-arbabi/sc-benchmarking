@@ -123,10 +123,10 @@ del sc; gc.collect()
 dir_data = f'{_HOME_DIR}/single-cell/Parse'
 os.makedirs(dir_data, exist_ok=True)
 
-file_data = f'{dir_data}/Parse_cytokines.h5ad'
+file_data = f'{dir_data}/Parse_10M_PBMC_cytokines.h5ad'
 if not os.path.exists(file_data):
     run(f'wget https://parse-wget.s3.us-west-2.amazonaws.com/10m/'
-        f'Parse_10M_PBMC_cytokines.h5ad -O {file_data}')
+        f'Parse_10M_PBMC_cytokines.h5ad')
 
 cell_type_broad_map = {
     # T cells

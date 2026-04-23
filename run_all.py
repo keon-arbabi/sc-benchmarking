@@ -27,7 +27,7 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 
 RSCRIPT = '/home/wainberg/bin/Rscript-4.5.3'
 PYTHON = '/home/wainberg/bin/python3.14'
-PYTHON_RAPIDS = '/home/karbabi/miniforge3/bin/python'
+PYTHON_RAPIDS = '/home/karbabi/miniforge3/envs/rapids_singlecell/bin/python'
 
 DATASET_NAMES = [
     'SEAAD',
@@ -44,7 +44,7 @@ SCRIPTS = [
     ('test_basic_brisc.py', 'brisc', 'basic', THREADS, False),
     ('test_basic_scanpy.py', 'scanpy', 'basic', None, False),
     ('test_basic_seurat.R', 'seurat', 'basic', None, False),
-    ('test_basic_brisc.py', 'brisc', 'basic', THREADS, True),
+    ('test_basic_brisc.py', 'brisc', 'basic', [-1], True),
     ('test_basic_rapids.py', 'rapids', 'basic', None, True),
     ('test_de_brisc.py', 'brisc', 'de', THREADS, False),
     ('test_de_scanpy.py', 'scanpy', 'de', None, False),

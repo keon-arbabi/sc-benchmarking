@@ -35,12 +35,8 @@ if __name__ == '__main__':
     data = data[keep].copy()
     sc.pp.highly_variable_genes(data, n_top_genes=2000, flavor='seurat_v3')
 
-    cell_idx = 0
     gene_idx = 0
     cell_type_select = data.obs['cell_type'].iloc[0]
-
-    with timers('Get expression by cell'):
-        data.X[cell_idx, :].toarray().ravel()
 
     with timers('Get expression by gene'):
         data.X[:, gene_idx].toarray().ravel()
@@ -53,9 +49,6 @@ if __name__ == '__main__':
 
     with timers('Subsample to 10,000 cells'):
         sc.pp.sample(data, n=10_000, copy=True)
-
-    with timers('Select categorical columns'):
-        data.obs.select_dtypes(exclude='number')
 
     with timers('Split by cell type'):
         data_split = [data[data.obs['cell_type_broad'] == ct].copy()

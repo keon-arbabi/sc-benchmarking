@@ -34,15 +34,9 @@ data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 rm(mat_disk, mat, obs_metadata); gc()
 
 data <- FindVariableFeatures(data)
-
 counts <- GetAssayData(data, layer = "counts")
-cell_name <- colnames(data)[1]
 gene_name <- rownames(data)[1]
 cell_type_select <- as.character(data$cell_type[1])
-
-timers$with_timer("Get expression by cell", {
-  as.matrix(counts[, cell_name])
-})
 
 timers$with_timer("Get expression by gene", {
   as.matrix(counts[gene_name, ])
@@ -58,10 +52,6 @@ timers$with_timer("Subset to highly variable genes", {
 
 timers$with_timer("Subsample to 10,000 cells", {
   subset(data, cells = sample(colnames(data), 10000))
-})
-
-timers$with_timer("Select categorical columns", {
-  data@meta.data[, !sapply(data@meta.data, is.numeric), drop = FALSE]
 })
 
 timers$with_timer("Split by cell type", {

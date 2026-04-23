@@ -34,6 +34,7 @@ if __name__ == '__main__':
     print('rapids basic (managed)')
     print(f'{DATA_PATH=}')
 
+    # https://rapids-singlecell.readthedocs.io/en/latest/out_of_core.html
     cluster = LocalCUDACluster(
         CUDA_VISIBLE_DEVICES='0,1,2,3',
         threads_per_worker=1,
@@ -68,7 +69,8 @@ if __name__ == '__main__':
     with timers('Quality control'):
         data.var['mt'] = data.var_names.str.upper().str.startswith('MT-')
         data.var['malat1'] = data.var_names.str.upper() == 'MALAT1'
-        rsc.pp.calculate_qc_metrics(data, qc_vars=['mt', 'malat1'])
+        rsc.pp.calculate_qc_metrics(
+            data, qc_vars=['mt', 'malat1'], log1p=False)
         keep = ((data.obs['n_genes_by_counts'].values >= 100) &
                 (data.obs['pct_counts_mt'].values <= 5) &
                 (data.obs['pct_counts_malat1'].values > 0))
@@ -87,7 +89,7 @@ if __name__ == '__main__':
     with timers('Feature selection'):
         rsc.pp.highly_variable_genes(
             data, n_top_genes=2000, flavor="cell_ranger")
-        data = data[:, data.var.highly_variable].copy()
+        rsc.pp.filter_highly_variable(data)
 
     with timers('PCA'):
         n_rows = data.shape[0]
