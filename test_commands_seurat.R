@@ -12,12 +12,12 @@ OUTPUT_PATH_TIME <- ARGS[3]
 
 system_info()
 cat("--- Params ---\n")
-cat("seurat manipulation\n")
+cat("seurat commands\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME, summary_unit = "ms",
-  csv_columns = list(library = "seurat", test = "manipulation",
+  csv_columns = list(library = "seurat", test = "commands",
                      dataset = DATA_NAME))
 
 bpcells_dir <- file.path(
@@ -33,6 +33,17 @@ obs_metadata <- read_h5ad_obs(DATA_PATH)
 data <- CreateSeuratObject(counts = mat, meta.data = obs_metadata)
 rm(mat_disk, mat, obs_metadata); gc()
 
+data[["percent.mt"]] <- PercentageFeatureSet(
+  data, features = grep("^mt-", rownames(data),
+  ignore.case = TRUE, value = TRUE))
+data[["malat1"]] <- FetchData(
+  data, vars = grep("^malat1$", rownames(data),
+  ignore.case = TRUE, value = TRUE))[, 1]
+data <- subset(
+  data, subset = nFeature_RNA >= 100 & percent.mt <= 5 & malat1 > 0,
+  slot = "counts")
+
+data <- NormalizeData(data)
 data <- FindVariableFeatures(data)
 counts <- GetAssayData(data, layer = "counts")
 gene_name <- rownames(data)[1]

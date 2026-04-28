@@ -25,7 +25,7 @@ cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 timers <- MemoryTimer(
   silent = FALSE, csv_path = OUTPUT_PATH_TIME,
   csv_columns = list(library = "seurat", test = "transfer",
-                     dataset = DATA_NAME, num_threads = "single-threaded"))
+                     dataset = DATA_NAME))
 
 # BPCells native functions required:
 # Loading from h5ad and writing to disk

@@ -14,12 +14,12 @@ if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
-    print('scanpy manipulation')
+    print('scanpy commands')
     print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME, summary_unit='ms',
-        csv_columns={'library': 'scanpy', 'test': 'manipulation',
+        csv_columns={'library': 'scanpy', 'test': 'commands',
                      'dataset': DATA_NAME})
 
     # Setup
@@ -33,7 +33,10 @@ if __name__ == '__main__':
             (data.obs['pct_counts_mt'].values <= 5) &
             (data.obs['pct_counts_malat1'].values > 0))
     data = data[keep].copy()
-    sc.pp.highly_variable_genes(data, n_top_genes=2000, flavor='seurat_v3')
+    sc.pp.normalize_total(data)
+    sc.pp.log1p(data)
+    sc.pp.highly_variable_genes(
+        data, n_top_genes=2000, batch_key='donor')
 
     gene_idx = 0
     cell_type_select = data.obs['cell_type'].iloc[0]

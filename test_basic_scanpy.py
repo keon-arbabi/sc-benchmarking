@@ -92,11 +92,12 @@ if __name__ == '__main__':
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
     # Save embeddings
+    ct_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
         'embed_1': data.obsm['X_umap'][:, 0],
         'embed_2': data.obsm['X_umap'][:, 1],
-        'cell_type': data.obs['cell_type'].tolist(),
+        'cell_type': data.obs[ct_col].tolist(),
         'cell_type_broad': data.obs['cell_type_broad'].tolist(),
         'cluster_res_0.25': data.obs['leiden_res_0.25'].tolist(),
         'cluster_res_0.5': data.obs['leiden_res_0.50'].tolist(),

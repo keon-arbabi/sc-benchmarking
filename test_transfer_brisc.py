@@ -37,7 +37,7 @@ if __name__ == '__main__':
     del data; gc.collect()
 
     with timers('Feature selection'):
-        data_ref, data_query = data_ref.hvg(data_query)
+        data_ref, data_query = data_ref.hvg(data_query, batch_column='donor')
 
     with timers('Normalization'):
         data_ref = data_ref.normalize()

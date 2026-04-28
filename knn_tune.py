@@ -15,8 +15,8 @@ OUTPUT_DIR = 'sc-benchmarking/output'
 FIGURES_DIR = 'sc-benchmarking/figures'
 
 NUM_CLUSTERS_MULT = [4, 8]
-MIN_CLUSTERS_SEARCHED = [32, 64, 128]
-KMEANS_ITERS = 2
+NUM_CLUSTERS_SEARCHED = [32, 64, 128]
+KMEANS_ITERS = [1, 2]
 NUM_THREADS = -1
 
 def log(msg):
@@ -39,7 +39,7 @@ all_rows = (pl.read_csv(results_csv).to_dicts()
     if os.path.exists(results_csv) else [])
 done_bl = {(r['dataset'], r['method'])
     for r in all_rows if r['method'] != 'brisc'}
-done = {(r['dataset'], r['mcs'], r['num_clusters_mult'])
+done = {(r['dataset'], r['ncs'], r['num_clusters_mult'])
     for r in all_rows if r['method'] == 'brisc'}
 
 for dataset_name in DATASETS:
@@ -77,22 +77,22 @@ for dataset_name in DATASETS:
         recall = float(recall_filtered['mean'][0])
         log(f'  {method}: recall={recall:.4f} time={time_s:.1f}s')
         all_rows.append(dict(method=method, recall=recall, time_s=time_s,
-            mcs=None, num_clusters_mult=None, num_clusters=None,
+            ncs=None, num_clusters_mult=None, num_clusters=None,
             dataset=dataset_name))
         pl.DataFrame(all_rows).write_csv(results_csv)
 
-    for mcs in MIN_CLUSTERS_SEARCHED:
+    for ncs in NUM_CLUSTERS_SEARCHED:
         for nc_mult in NUM_CLUSTERS_MULT:
             num_clusters = int(np.ceil(nc_mult * np.sqrt(num_cells)))
-            if mcs > num_clusters:
+            if ncs > num_clusters:
                 continue
-            if (dataset_name, mcs, nc_mult) in done:
-                log(f'  brisc nc={nc_mult}x mcs={mcs}... cached')
+            if (dataset_name, ncs, nc_mult) in done:
+                log(f'  brisc nc={nc_mult}x ncs={ncs}... cached')
                 continue
             t0 = time.time()
             sc_nb = data_sc.neighbors(
                 num_clusters=num_clusters,
-                min_clusters_searched=mcs,
+                num_clusters_searched=ncs,
                 num_kmeans_iterations=KMEANS_ITERS,
                 num_threads=NUM_THREADS,
                 overwrite=True,
@@ -102,10 +102,10 @@ for dataset_name in DATASETS:
             if query_idx is not None:
                 nb = nb[query_idx]
             rc = recall_at_k(gt_neighbors, nb).mean()
-            log(f'  brisc nc={nc_mult}x mcs={mcs}...'
+            log(f'  brisc nc={nc_mult}x ncs={ncs}...'
                 f' recall={rc:.4f} time={elapsed:.1f}s')
             all_rows.append(dict(method='brisc', recall=float(rc),
-                time_s=elapsed, mcs=mcs,
+                time_s=elapsed, ncs=ncs,
                 num_clusters_mult=nc_mult, num_clusters=num_clusters,
                 dataset=dataset_name))
             pl.DataFrame(all_rows).write_csv(results_csv)

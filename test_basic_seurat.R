@@ -114,11 +114,12 @@ colnames(neighbors_df) <- paste0("neighbor_", seq_len(ncol(knn_idx)))
 write.csv(neighbors_df, OUTPUT_PATH_NEIGHBORS, row.names = FALSE)
 
 # Save embeddings
+ct_col <- if (DATA_NAME == "PanSci") "cell_type_fine" else "cell_type"
 embedding_df <- data.frame(
   cell_id = colnames(data),
   embed_1 = Embeddings(data, "umap")[, 1],
   embed_2 = Embeddings(data, "umap")[, 2],
-  cell_type = data$cell_type,
+  cell_type = data@meta.data[[ct_col]],
   cell_type_broad = data$cell_type_broad,
   cluster_res_0.25 = data$clusters_0.25,
   cluster_res_0.5 = data$clusters_0.5,

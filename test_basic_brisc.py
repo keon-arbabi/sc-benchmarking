@@ -55,17 +55,17 @@ if __name__ == '__main__':
     with timers('Embedding (PaCMAP)'):
         data = data.pacmap()
 
-    if not GPU:
-        with timers('Embedding (LocalMAP)', exclude=True):
-            data = data.localmap()
+    # if not GPU:
+    #     with timers('Embedding (LocalMAP)', exclude=True):
+    #         data = data.localmap()
 
-    if not GPU and not SINGLE_THREADED:
-        with timers('Embedding (UMAP)', exclude=True):
-            data = data.umap()
+    # if not GPU and not SINGLE_THREADED:
+    #     with timers('Embedding (UMAP)', exclude=True):
+    #         data = data.umap()
 
-        with timers('Embedding (UMAP hogwild)', exclude=True):
-            data = data.umap(
-                hogwild=True, embedding_key='umap_hogwild')
+    #     with timers('Embedding (UMAP hogwild)', exclude=True):
+    #         data = data.umap(
+    #             hogwild=True, embedding_key='umap_hogwild')
 
     with timers('Find markers'):
         markers = data.find_markers('cell_type')
@@ -88,9 +88,10 @@ if __name__ == '__main__':
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
     # Save embeddings
+    ct_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
     embed_cols = {
         'cell_id': data.obs['cell_id'],
-        'cell_type': data.obs['cell_type'],
+        'cell_type': data.obs[ct_col],
         'cell_type_broad': data.obs['cell_type_broad'],
         'cluster_res_0.25': data.obs['cluster_0'],
         'cluster_res_0.5': data.obs['cluster_1'],

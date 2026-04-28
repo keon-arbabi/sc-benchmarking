@@ -19,7 +19,7 @@ unlink(bpcells_dir, recursive = TRUE)
 
 system_info()
 cat("--- Params ---\n")
-cat("seurat de deseq\n")
+cat("seurat de\n")
 cat(sprintf("DATA_PATH=%s\n", DATA_PATH))
 
 timers <- MemoryTimer(

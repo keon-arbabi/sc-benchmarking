@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
-    print('scanpy de deseq')
+    print('scanpy de')
     print(f'{DATA_PATH=}')
 
     timers = MemoryTimer(

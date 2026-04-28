@@ -1,9 +1,9 @@
 import os
 import time
-from pathlib import Path
 import faiss
 import numpy as np
 import polars as pl
+from pathlib import Path
 
 OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
 DATASETS = ['SEAAD', 'Parse', 'PanSci']
@@ -143,16 +143,12 @@ for dataset_name in DATASETS:
             dataset=dataset_name,
             k=k_lib,
             mean=float(rc.mean()),
-            se=float(rc.std() / np.sqrt(len(rc))),
-            median=float(np.median(rc)),
             min=float(rc.min()),
             p5=float(np.quantile(rc, 0.05)),
-            p25=float(np.quantile(rc, 0.25)),
-            p75=float(np.quantile(rc, 0.75)),
-            p95=float(np.quantile(rc, 0.95))))
+            p25=float(np.quantile(rc, 0.25))))
 
         log(f'[{dataset_name}/{lib_name}] Recall@{k_lib}: '
-            f'mean={rc.mean():.4f}, median={np.median(rc):.4f}')
+            f'mean={rc.mean():.4f}, min={rc.min():.4f}')
 
 if all_summary_rows:
     pl.DataFrame(all_summary_rows)\

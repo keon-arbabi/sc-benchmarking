@@ -17,19 +17,20 @@ if __name__ == '__main__':
 
     system_info()
     print('--- Params ---')
-    print('brisc manipulation')
+    print('brisc commands')
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME, summary_unit='ms',
-        csv_columns={'library': 'brisc', 'test': 'manipulation',
-                        'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
+        csv_columns={'library': 'brisc', 'test': 'commands',
+                    'dataset': DATA_NAME, 'num_threads': NUM_THREADS})
 
     # Setup
     data = SingleCell(DATA_PATH, num_threads=NUM_THREADS)\
         .qc(subset=False, allow_float=True)\
-        .hvg()
+        .hvg(batch_column='donor')\
+        .normalize()
 
     gene_name = data.var_names[0]
     cell_type_select = data.obs['cell_type'][0]
@@ -38,7 +39,7 @@ if __name__ == '__main__':
         data.gene(gene_name)
 
     with timers('Subset to one cell type'):
-        data.filter_obs(pl.col(cell_type).eq(cell_type_select))
+        data.filter_obs(pl.col('cell_type').eq(cell_type_select))
 
     with timers('Subset to highly variable genes'):
         data.filter_var(pl.col('highly_variable'))
