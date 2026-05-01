@@ -21,6 +21,22 @@ if __name__ == '__main__':
     print(f'{DATA_PATH=}')
     print(f'{NUM_THREADS=}')
 
+    if DATA_NAME == 'SEAAD':
+        formula = '~ 0 + cond + apoe4_dosage + sex + age_at_death + pmi + ' \
+            'log2(num_cells) + log2(library_size)'
+        contrasts = {'AD_vs_Control': '`condAD` - `condControl`'}
+        categorical_columns = ['cond']
+    elif DATA_NAME == 'Parse':
+        formula = '~ 0 + cond + donor + ' \
+            'log2(num_cells) + log2(library_size)'
+        contrasts = {'IFN-gamma_vs_PBS': '`condIFN-gamma` - `condPBS`'}
+        categorical_columns = ['donor', 'cond']
+    elif DATA_NAME == 'PanSci':
+        formula = '~ 0 + cond + sex + ' \
+            'log2(num_cells) + log2(library_size)'
+        contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}
+        categorical_columns = ['cond', 'sex']
+
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
         csv_columns={'library': 'brisc', 'test': 'de',
@@ -43,42 +59,13 @@ if __name__ == '__main__':
         data_pb = data_pb.qc('cond', verbose=False)
 
     with timers('Differential expression'):
-        if DATA_NAME == 'SEAAD':
-            formula = '~ 0 + cond + apoe4_dosage + sex + age_at_death + ' \
-                'log2(num_cells) + log2(library_size)'
-            contrasts = {'AD_vs_Control': '`condAD` - `condControl`'}
-            de = data_pb\
-                .library_size()\
-                .DE(formula,
-                    contrasts=contrasts,
-                    group='cond',
-                    categorical_columns=['cond'],
-                    verbose=False)
-
-        elif DATA_NAME == 'Parse':
-            formula = '~ 0 + cond + donor + ' \
-                'log2(num_cells) + log2(library_size)'
-            contrasts = {
-                'IFN-gamma_vs_PBS': '`condIFN-gamma` - `condPBS`'}
-            de = data_pb\
-                .library_size()\
-                .DE(formula,
-                    contrasts=contrasts,
-                    group='cond',
-                    categorical_columns=['donor', 'cond'],
-                    verbose=False)
-
-        elif DATA_NAME == 'PanSci':
-            formula = '~ 0 + cond + sex + ' \
-                'log2(num_cells) + log2(library_size)'
-            contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}
-            de = data_pb\
-                .library_size()\
-                .DE(formula,
-                    contrasts=contrasts,
-                    group='cond',
-                    categorical_columns=['cond', 'sex'],
-                    verbose=False)
+        de = data_pb\
+            .library_size()\
+            .DE(formula,
+                contrasts=contrasts,
+                group='cond',
+                categorical_columns=categorical_columns,
+                verbose=False)
 
     de_df = de.table\
         .select('cell_type', 'gene', 'logFC', 'p', 'FDR')\

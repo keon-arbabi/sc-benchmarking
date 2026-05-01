@@ -138,6 +138,11 @@ for dataset_name in DATASETS:
         log(f'[{dataset_name}/{lib_name}] Computing recall@{k_lib}...')
         rc = recall_at_k(gt_k, approx_neighbors)
 
+        rc_path = os.path.join(
+            OUTPUT_DIR, f'knn_recall_{lib_name}_{dataset_name}.csv')
+        pl.DataFrame({'recall': rc}).write_csv(rc_path)
+        log(f'[{dataset_name}/{lib_name}] Saved per-cell recall to {rc_path}')
+
         all_summary_rows.append(dict(
             method=lib_name,
             dataset=dataset_name,

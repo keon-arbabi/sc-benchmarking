@@ -2,6 +2,7 @@ import os
 import gc
 import sys
 import decoupler as dc
+import numpy as np
 import polars as pl
 import scanpy as sc
 from pydeseq2.ds import DeseqStats
@@ -21,6 +22,19 @@ if __name__ == '__main__':
     print('--- Params ---')
     print('scanpy de')
     print(f'{DATA_PATH=}')
+
+    if DATA_NAME == 'SEAAD':
+        sample_cols = ['cond', 'apoe4_dosage', 'sex', 'age_at_death', 'pmi']
+        contrast = ['cond', 'AD', 'Control']
+        design = '~ cond + apoe4_dosage + sex + age_at_death + pmi'
+    elif DATA_NAME == 'Parse':
+        sample_cols = ['cond', 'donor']
+        contrast = ['cond', 'IFN-gamma', 'PBS']
+        design = '~ cond + donor'
+    elif DATA_NAME == 'PanSci':
+        sample_cols = ['cond', 'sex']
+        contrast = ['cond', 'Aged', 'Young']
+        design = '~ cond + sex'
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
@@ -42,28 +56,33 @@ if __name__ == '__main__':
         data_sc = data_sc[keep].copy()
 
     with timers('Pseudobulk'):
-        data_pb = dc.pp.pseudobulk(
-            data_sc, sample_col='sample', groups_col='cell_type', mode='sum')
+        data_pb = sc.get.aggregate(
+            data_sc, by=['sample', 'cell_type'], func='sum')
+        data_pb.X = data_pb.layers.pop('sum')
+        sample_meta = data_sc.obs[['sample'] + sample_cols]\
+            .drop_duplicates('sample').set_index('sample')
+        for col in sample_cols:
+            data_pb.obs[col] = data_pb.obs['sample'].map(sample_meta[col])
+        data_pb.obs['psbulk_cells'] = \
+            data_pb.obs['n_obs_aggregated'].astype(int)
+        data_pb.obs['psbulk_counts'] = np.asarray(
+            data_pb.X.sum(axis=1)).ravel()
 
     del data_sc; gc.collect()
 
     data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
+    for col in ('age_at_death', 'pmi'):
+        if col in data_pb.obs:
+            s = data_pb.obs[col]
+            data_pb.obs[col] = (s - s.mean()) / s.std()
+
     with timers('Quality control'):
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
 
     with timers('Differential expression'):
-        # PyDESeq2 paper benchmarks on 8 cores (Muzellec et al. 2023); beyond
-        # that, joblib dispatch dominates per-gene IRLS on small problems.
         inference = DefaultInference(n_cpus=16)
         cell_types = data_pb.obs['cell_type'].unique()
-
-        if DATA_NAME == 'SEAAD':
-            contrast = ['cond', 'AD', 'Control']
-        elif DATA_NAME == 'Parse':
-            contrast = ['cond', 'IFN-gamma', 'PBS']
-        elif DATA_NAME == 'PanSci':
-            contrast = ['cond', 'Aged', 'Young']
 
         de = {}
         for ct in cell_types:
@@ -73,7 +92,7 @@ if __name__ == '__main__':
             dc.pp.filter_by_expr(
                 data_pb_ct, group='cond', min_count=10)
             dds = DeseqDataSet(
-                adata=data_pb_ct, design='~ cond',
+                adata=data_pb_ct, design=design,
                 refit_cooks=True, inference=inference, quiet=True)
             dds.deseq2()
             stat_res = DeseqStats(
