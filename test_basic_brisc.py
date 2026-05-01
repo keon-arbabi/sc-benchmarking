@@ -55,17 +55,17 @@ if __name__ == '__main__':
     with timers('Embedding (PaCMAP)'):
         data = data.pacmap()
 
-    # if not GPU:
-    #     with timers('Embedding (LocalMAP)', exclude=True):
-    #         data = data.localmap()
+    if not GPU:
+        with timers('Embedding (LocalMAP)', exclude=True):
+            data = data.localmap()
 
-    # if not GPU and not SINGLE_THREADED:
-    #     with timers('Embedding (UMAP)', exclude=True):
-    #         data = data.umap()
+    if not GPU and not SINGLE_THREADED:
+        with timers('Embedding (UMAP)', exclude=True):
+            data = data.umap()
 
-    #     with timers('Embedding (UMAP hogwild)', exclude=True):
-    #         data = data.umap(
-    #             hogwild=True, embedding_key='umap_hogwild')
+        with timers('Embedding (UMAP hogwild)', exclude=True):
+            data = data.umap(
+                hogwild=True, embedding_key='umap_hogwild')
 
     with timers('Find markers'):
         markers = data.find_markers('cell_type')

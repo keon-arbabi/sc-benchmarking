@@ -34,7 +34,6 @@ if __name__ == '__main__':
     print('rapids basic (managed)')
     print(f'{DATA_PATH=}')
 
-    # https://rapids-singlecell.readthedocs.io/en/latest/out_of_core.html
     cluster = LocalCUDACluster(
         CUDA_VISIBLE_DEVICES='0,1,2,3',
         threads_per_worker=1,
@@ -138,12 +137,11 @@ if __name__ == '__main__':
     })
     neighbors_df.write_csv(OUTPUT_PATH_NEIGHBORS)
 
-    umap_coords = data.obsm['X_umap']
     ct_col = 'cell_type_fine' if DATA_NAME == 'PanSci' else 'cell_type'
     embedding_df = pl.DataFrame({
         'cell_id': data.obs_names.tolist(),
-        'embed_1': umap_coords[:, 0],
-        'embed_2': umap_coords[:, 1],
+        'embed_1': data.obsm['X_umap'][:, 0],
+        'embed_2': data.obsm['X_umap'][:, 1],
         'cell_type': data.obs[ct_col].tolist(),
         'cell_type_broad': data.obs['cell_type_broad'].tolist(),
         'cluster_res_0.25': data.obs['leiden_0.25'].tolist(),

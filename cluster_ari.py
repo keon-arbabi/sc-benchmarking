@@ -7,7 +7,6 @@ OUTPUT_DIR = f'{Path.home()}/sc-benchmarking/output'
 DATASETS = ['SEAAD', 'Parse', 'PanSci']
 LIBRARIES = {
     'brisc': 'basic_brisc_{dataset}_-1_embedding.csv',
-    'brisc_st': 'basic_brisc_{dataset}_1_embedding.csv',
     'scanpy': 'basic_scanpy_{dataset}_embedding.csv',
     'seurat': 'basic_seurat_{dataset}_embedding.csv',
     'rapids': 'basic_rapids_{dataset}_gpu_embedding.csv',
