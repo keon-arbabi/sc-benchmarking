@@ -154,5 +154,9 @@ if __name__ == '__main__':
 
     timers.shutdown()
     print('--- Completed successfully ---')
+
+    print('\n--- Session Info ---')
+    import scanpy as sc
+    sc.logging.print_header()
     sys.stdout.flush()
     os._exit(0)

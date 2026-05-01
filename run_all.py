@@ -79,7 +79,7 @@ def run_jobs(scripts):
         if script_file.endswith('.R'):
             interpreter = RSCRIPT
         elif tool == 'rapids':
-            interpreter = PYTHON_RAPIDS
+            interpreter = f'PYTHONPATH= {PYTHON_RAPIDS}'
         else:
             interpreter = PYTHON
         script_path = os.path.join(WORK_DIR, script_file)
