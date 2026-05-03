@@ -5,6 +5,7 @@ import decoupler as dc
 import numpy as np
 import polars as pl
 import scanpy as sc
+from formulaic import Formula
 from pydeseq2.ds import DeseqStats
 from pydeseq2.dds import DeseqDataSet, DefaultInference
 from pathlib import Path
@@ -26,15 +27,16 @@ if __name__ == '__main__':
     if DATA_NAME == 'SEAAD':
         sample_cols = ['cond', 'apoe4_dosage', 'sex', 'age_at_death', 'pmi']
         contrast = ['cond', 'AD', 'Control']
-        design = '~ cond + apoe4_dosage + sex + age_at_death + pmi'
+        design = ('~ cond + apoe4_dosage + sex + age_at_death + pmi +'
+                  'log2_psbulk_cells + log2_psbulk_counts')
     elif DATA_NAME == 'Parse':
         sample_cols = ['cond', 'donor']
         contrast = ['cond', 'IFN-gamma', 'PBS']
-        design = '~ cond + donor'
+        design = '~ cond + donor + log2_psbulk_cells + log2_psbulk_counts'
     elif DATA_NAME == 'PanSci':
         sample_cols = ['cond', 'sex']
         contrast = ['cond', 'Aged', 'Young']
-        design = '~ cond + sex'
+        design = '~ cond + sex + log2_psbulk_cells + log2_psbulk_counts'
 
     timers = MemoryTimer(
         silent=False, csv_path=OUTPUT_PATH_TIME,
@@ -72,13 +74,24 @@ if __name__ == '__main__':
 
     data_pb = data_pb[data_pb.obs['cond'].notna()].copy()
 
-    for col in ('age_at_death', 'pmi'):
+    data_pb.obs['log2_psbulk_cells'] = np.log2(data_pb.obs['psbulk_cells'])
+    data_pb.obs['log2_psbulk_counts'] = np.log2(data_pb.obs['psbulk_counts'])
+
+    # z-score so exp(Xb) in IRLS doesn't overflow
+    for col in ('age_at_death', 'pmi',
+                'log2_psbulk_cells', 'log2_psbulk_counts'):
         if col in data_pb.obs:
             s = data_pb.obs[col]
             data_pb.obs[col] = (s - s.mean()) / s.std()
 
     with timers('Quality control'):
         dc.pp.filter_samples(data_pb, min_cells=10, min_counts=1000)
+
+    # drop donors lacking both cond levels per cell type (post-sample-filter)
+    if 'donor' in data_pb.obs:
+        paired = (data_pb.obs.groupby(['cell_type', 'donor'], observed=True)
+                  ['cond'].transform('nunique') == 2)
+        data_pb = data_pb[paired.values].copy()
 
     with timers('Differential expression'):
         inference = DefaultInference(n_cpus=16)
@@ -87,8 +100,15 @@ if __name__ == '__main__':
         de = {}
         for ct in cell_types:
             data_pb_ct = data_pb[data_pb.obs['cell_type'] == ct].copy()
-            if data_pb_ct.obs['cond'].nunique() < 2:
+
+            # skip saturated or rank-deficient designs
+            mm = Formula(design).get_model_matrix(data_pb_ct.obs)
+            if mm.shape[0] <= mm.shape[1] \
+                    or np.linalg.matrix_rank(mm.values) < mm.shape[1]:
+                print(f'Skipping {ct}: design not full rank '
+                      f'({mm.shape[0]} samples, {mm.shape[1]} cols)')
                 continue
+
             dc.pp.filter_by_expr(
                 data_pb_ct, group='cond', min_count=10)
             dds = DeseqDataSet(

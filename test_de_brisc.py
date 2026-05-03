@@ -27,13 +27,11 @@ if __name__ == '__main__':
         contrasts = {'AD_vs_Control': '`condAD` - `condControl`'}
         categorical_columns = ['cond']
     elif DATA_NAME == 'Parse':
-        formula = '~ 0 + cond + donor + ' \
-            'log2(num_cells) + log2(library_size)'
+        formula = '~ 0 + cond + donor + log2(num_cells) + log2(library_size)'
         contrasts = {'IFN-gamma_vs_PBS': '`condIFN-gamma` - `condPBS`'}
         categorical_columns = ['donor', 'cond']
     elif DATA_NAME == 'PanSci':
-        formula = '~ 0 + cond + sex + ' \
-            'log2(num_cells) + log2(library_size)'
+        formula = '~ 0 + cond + sex + log2(num_cells) + log2(library_size)'
         contrasts = {'Aged_vs_Young': '`condAged` - `condYoung`'}
         categorical_columns = ['cond', 'sex']
 
